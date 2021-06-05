@@ -9,9 +9,6 @@ from ipv8.peer import Peer
 
 
 class CommunityRoutines(ABC):
-    @property
-    def my_peer_key(self) -> Key:
-        return self.my_peer.key
 
     @property
     def my_pub_key_bin(self) -> bytes:

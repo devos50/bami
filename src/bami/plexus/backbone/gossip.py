@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, ABCMeta, abstractmethod
 from asyncio import Queue, sleep
+from binascii import hexlify
 from random import sample, shuffle
 from typing import Iterable, Union
 
+from bami.plexus.backbone.block import PlexusBlock
 from bami.plexus.backbone.community_routines import (
     CommunityRoutines,
     MessageStateMachine,
@@ -14,7 +16,6 @@ from bami.plexus.backbone.payload import (
     BlocksRequestPayload,
     FrontierPayload,
     FrontierResponsePayload,
-    RawBlockPayload,
 )
 from bami.plexus.backbone.sub_community import SubCommunityRoutines
 from ipv8.lazy_community import lazy_wrapper
@@ -103,33 +104,34 @@ class GossipRoutines(ABC):
 class GossipFrontiersMixin(
     GossipRoutines, MessageStateMachine, CommunityRoutines, metaclass=ABCMeta,
 ):
-    COMMUNITY_CACHE = u"gossip_cache"
+    COMMUNITY_CACHE = "gossip_cache"
 
-    def frontier_gossip_sync_task(self, subcom_id: bytes, prefix: bytes = b"") -> None:
-        """Start of the gossip state machine"""
-        chain = self.persistence.get_chain(prefix + subcom_id)
+    def frontier_gossip_sync_task(self, subcom_id: bytes) -> None:
+        """
+        Periodic task that gossips the frontier to connected peers in the community.
+        """
+        chain = self.persistence.get_chain(subcom_id)
         if not chain:
             self.logger.debug(
-                "No chain for %s. Skipping the gossip round.", prefix + subcom_id
+                "Skipping the gossip round - no chain for %s", hexlify(subcom_id).decode()
             )
-        if chain:
+        else:
             frontier = chain.frontier
             # Select next peers for the gossip round
             next_peers = self.gossip_strategy.get_next_gossip_peers(
                 subcom_id,
-                prefix + subcom_id,
+                subcom_id,
                 frontier,
                 self.settings.frontier_gossip_fanout,
             )
             for peer in next_peers:
                 self.logger.debug(
-                    "Sending frontier %s to peer %s. Audit chain: %s",
+                    "Sending frontier %s to peer %s",
                     frontier,
                     peer,
-                    prefix.startswith(b"w"),
                 )
                 self.send_packet(
-                    peer, FrontierPayload(prefix + subcom_id, frontier.to_bytes())
+                    peer, FrontierPayload(subcom_id, frontier.to_bytes())
                 )
 
     async def process_frontier_queue(self, subcom_id: bytes) -> None:
@@ -149,10 +151,9 @@ class GossipFrontiersMixin(
             else:
                 # Request blocks and wait for some time
                 self.logger.debug(
-                    "Sending frontier diff %s to peer %s. Audit chain: %s",
+                    "Sending frontier diff %s to peer %s",
                     frontier_diff,
                     peer,
-                    subcom_id.startswith(b"w"),
                 )
                 self.send_packet(
                     peer, BlocksRequestPayload(subcom_id, frontier_diff.to_bytes())
@@ -179,7 +180,7 @@ class GossipFrontiersMixin(
                 (peer, frontier, should_respond)
             )
         else:
-            self.logger.error("Received unexpected frontier %s", chain_id)
+            self.logger.error("Received unexpected frontier %s", hexlify(chain_id).decode())
 
     @lazy_wrapper(FrontierPayload)
     def received_frontier(self, peer: Peer, payload: FrontierPayload) -> None:
@@ -199,22 +200,21 @@ class GossipFrontiersMixin(
         chain_id = payload.subcom_id
         vals_to_request = set()
         self.logger.debug(
-            "Received block request %s from peer %s. Audit chain: %s",
+            "Received block request %s from peer %s",
             f_diff,
             peer,
-            chain_id.startswith(b"w"),
         )
-        blocks = self.persistence.get_block_blobs_by_frontier_diff(
+        blocks_blob = self.persistence.get_block_blobs_by_frontier_diff(
             chain_id, f_diff, vals_to_request
         )
         self.logger.debug(
-            "Sending %s blocks to peer %s. Audit chain %s",
-            len(blocks),
-            peer,
-            chain_id.startswith(b"w"),
+            "Sending %s blocks to peer %s",
+            len(blocks_blob),
+            peer
         )
-        for block in blocks:
-            self.send_packet(peer, RawBlockPayload(block))
+        for block_blob in blocks_blob:
+            block = PlexusBlock.unpack(block_blob)
+            self.send_packet(peer, block.to_block_payload())
 
     def setup_messages(self) -> None:
         self.add_message_handler(FrontierPayload, self.received_frontier)

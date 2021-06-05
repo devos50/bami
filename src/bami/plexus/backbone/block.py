@@ -5,7 +5,7 @@ from collections import namedtuple
 from hashlib import sha256
 import logging
 import time
-from typing import Any, List
+from typing import Any, List, Dict
 
 from ipv8.keyvault.crypto import default_eccrypto
 from ipv8.messaging.serialization import default_serializer, PackError
@@ -22,7 +22,7 @@ from bami.plexus.backbone.utils import (
     GENESIS_SEQ,
     Links,
     shorten,
-    UNKNOWN_SEQ,
+    UNKNOWN_SEQ, encode_raw, NO_COMMUNITY, decode_raw,
 )
 from bami.plexus.backbone.payload import BlockPayload
 
@@ -49,10 +49,9 @@ class PlexusBlock(object):
             "public_key",
             "sequence_number",
             "previous",
-            "links",
-            "com_prefix",
-            "com_id",
-            "com_seq_num",
+            "community_links",
+            "community_id",
+            "community_sequence_number",
             "timestamp",
             "insert_time",
             "signature",
@@ -73,7 +72,8 @@ class PlexusBlock(object):
         if data is None:
             # data
             self.type = b"unknown"
-            self.transaction = b""
+            self.transaction = {}
+            self._transaction = encode_raw(self.transaction)
             # block identity
             self.public_key = EMPTY_PK
             self.sequence_number = GENESIS_SEQ
@@ -83,13 +83,12 @@ class PlexusBlock(object):
             self._previous = encode_links(self.previous)
 
             # Linked blocks => links to the block in other chains
-            self.links = GENESIS_LINK
-            self._links = encode_links(self.links)
+            self.community_links = GENESIS_LINK
+            self._community_links = encode_links(self.community_links)
 
             # Metadata for community identifiers
-            self.com_prefix = b""
-            self.com_id = EMPTY_PK
-            self.com_seq_num: int = UNKNOWN_SEQ
+            self.community_id = NO_COMMUNITY
+            self.community_sequence_number: int = UNKNOWN_SEQ
 
             # Creation timestamp
             self.timestamp = int(time.time() * 1000)
@@ -98,43 +97,34 @@ class PlexusBlock(object):
             # debug stuff
             self.insert_time = None
         else:
-            self.transaction = data[1] if isinstance(data[1], bytes) else bytes(data[1])
+            self._transaction = data[1] if isinstance(data[1], bytes) else bytes(data[1])
+            self.transaction = decode_raw(self._transaction)
             self._previous = (
                 BytesLinks(data[4]) if isinstance(data[4], bytes) else bytes(data[4])
             )
-            self._links = (
+            self._community_links = (
                 BytesLinks(data[5]) if isinstance(data[5], bytes) else bytes(data[5])
             )
 
             self.previous = decode_links(self._previous)
-            self.links = decode_links(self._links)
+            self.community_links = decode_links(self._community_links)
 
             self.type, self.public_key, self.sequence_number = data[0], data[2], data[3]
-            self.com_prefix, self.com_id, self.com_seq_num = (
+            self.community_id, self.community_sequence_number = (
                 data[6],
-                data[7],
-                int(data[8]),
+                int(data[7]),
             )
             self.signature, self.timestamp, self.insert_time = (
+                data[8],
                 data[9],
                 data[10],
-                data[11],
             )
 
+            # Convert the type to bytes if it is provided in string format
             self.type = (
                 self.type
                 if isinstance(self.type, bytes)
                 else str(self.type).encode("utf-8")
-            )
-            self.public_key = (
-                self.public_key
-                if isinstance(self.public_key, bytes)
-                else bytes(self.public_key)
-            )
-            self.signature = (
-                self.signature
-                if isinstance(self.signature, bytes)
-                else bytes(self.signature)
             )
 
         self.hash = self.calculate_hash()
@@ -143,21 +133,24 @@ class PlexusBlock(object):
 
     def __str__(self):
         # This makes debugging and logging easier
-        return "Block {0} from ...{1}:{2} links {3} for {4} type {5} cseq {6} cid {7}.{8}".format(
-            self.short_hash,
+        return "Block {0} from ...{1}:{2} links {3} for {4} type {5} cseq {6} cid {7}".format(
+            self.readable_short_hash,
             shorten(self.public_key),
             self.sequence_number,
-            self.links,
+            self.community_links,
             self.transaction,
             self.type,
-            self.com_seq_num,
-            self.com_prefix,
-            self.com_id,
+            self.community_sequence_number,
+            self.community_id,
         )
 
     @property
     def short_hash(self):
         return shorten(self.hash)
+
+    @property
+    def readable_short_hash(self) -> str:
+        return hexlify(self.short_hash).decode()
 
     def __hash__(self):
         return self.hash_number
@@ -168,7 +161,7 @@ class PlexusBlock(object):
 
     @property
     def com_dot(self) -> Dot:
-        return Dot((self.com_seq_num, self.short_hash))
+        return Dot((self.community_sequence_number, self.short_hash))
 
     @property
     def hash_number(self):
@@ -192,14 +185,13 @@ class PlexusBlock(object):
     def block_args(self, signature: bool = True) -> List[Any]:
         args = [
             self.type,
-            self.transaction,
+            self._transaction,
             self.public_key,
             self.sequence_number,
             self._previous,
-            self._links,
-            self.com_prefix,
-            self.com_id,
-            self.com_seq_num,
+            self._community_links,
+            self.community_id,
+            self.community_sequence_number,
             self.signature if signature else EMPTY_SIG,
             self.timestamp,
         ]
@@ -240,10 +232,9 @@ class PlexusBlock(object):
                 payload.public_key,
                 payload.sequence_number,
                 payload.previous,
-                payload.links,
-                payload.com_prefix,
-                payload.com_id,
-                payload.com_seq_num,
+                payload.community_links,
+                payload.community_id,
+                payload.community_sequence_number,
                 payload.signature,
                 payload.timestamp,
                 time.time(),
@@ -263,15 +254,11 @@ class PlexusBlock(object):
     def create(
         cls,
         block_type: bytes,
-        transaction: bytes,
+        transaction: Dict,
         database: "BaseDB",
         public_key: bytes,
-        com_prefix: bytes = b"",
-        com_id: bytes = None,
-        com_links: Links = None,
-        pers_links: Links = None,
-        use_consistent_links: bool = True,
-    ):
+        community_id: bytes = None,
+    ) -> PlexusBlock:
         """
         Create PlexusBlock wrt local database knowledge.
 
@@ -280,83 +267,47 @@ class PlexusBlock(object):
             transaction: transaction blob bytes
             database: local database with chains
             public_key: public key of the block creator
-            com_prefix: prefix for the chain identification [optional]
-            com_id: id of the community which block is part of [optional]
-            com_links: Explicitly link with these blocks [optional]
-            pers_links: Create a block at a certain [optional]
-            use_consistent_links: Build on top of blocks that are known. By default: True
+            community_id: id of the community which block is part of [optional]
 
         Returns:
             PlexusBlock
 
         """
-        if public_key == com_id:
-            full_pers_chain_id = com_prefix + public_key
-        else:
-            full_pers_chain_id = public_key
-        personal_chain = database.get_chain(full_pers_chain_id)
-        # Decide to link blocks in the personal chain:
-        if not personal_chain:
-            # There are no blocks in the personal chain yet
-            last_link = Links((GENESIS_DOT,))
-        else:
-            last_link = (
-                personal_chain.consistent_terminal
-                if use_consistent_links
-                else personal_chain.terminal
-            )
+        personal_chain = database.get_chain(public_key)
 
-        # Fork personal chain at the
-        if pers_links:
-            # There is an explicit link for the previous link
-            last_link = pers_links
+        # Determine the pointer to the previous block in the personal chain
+        last_link = Links((GENESIS_DOT,)) if not personal_chain else personal_chain.consistent_terminal
 
-        per_seq_num = max(last_link)[0] + 1
-
-        # TODO: Add link filtering and choose links
-        ret = cls()
-        ret.type = block_type
-        ret.transaction = transaction
-        ret.sequence_number = per_seq_num
-        ret.previous = last_link
+        block = cls()
+        block.type = block_type
+        block.transaction = transaction
+        block.sequence_number = max(last_link)[0] + 1
+        block.previous = last_link
 
         # --- Community related logic ---
-        if com_id:
-            ret.com_id = com_id
+        if community_id:
             # There is community specified => will base block on the latest known information + filters
-            if com_links:
-                last_com_links = com_links
-                com_seq_num = max(last_com_links)[0]
+            block.community_id = community_id
+            community_chain = database.get_chain(community_id)
+            if not community_chain:
+                block.community_links = GENESIS_LINK
             else:
-                com_chain = database.get_chain(com_prefix + com_id)
-                if not com_chain:
-                    last_com_links = Links((GENESIS_DOT,))
-                else:
-                    last_com_links = (
-                        com_chain.consistent_terminal
-                        if use_consistent_links
-                        else com_chain.terminal
-                    )
-                # TODO: add link filtering here
-                com_seq_num = max(last_com_links)[0] + 1
+                block.community_links = community_chain.consistent_terminal
 
-            ret.links = last_com_links
-            ret.com_seq_num = com_seq_num
-            ret.com_id = com_id
-            ret.com_prefix = com_prefix
+            block.community_sequence_number = max(block.community_links)[0] + 1
 
-        ret._links = encode_links(ret.links)
-        ret._previous = encode_links(ret.previous)
+        block._community_links = encode_links(block.community_links)
+        block._previous = encode_links(block.previous)
 
-        ret.public_key = public_key
-        ret.signature = EMPTY_SIG
-        ret.hash = ret.calculate_hash()
-        return ret
+        block.public_key = public_key
+        block.signature = EMPTY_SIG
+        block.hash = block.calculate_hash()
+        return block
 
     def block_invariants_valid(self) -> bool:
         """Verify that block is valid wrt block invariants"""
         # 1. Sequence number should not be prior to genesis
-        if self.sequence_number < GENESIS_SEQ and self.com_seq_num < GENESIS_SEQ:
+        if self.sequence_number < GENESIS_SEQ and self.community_sequence_number < GENESIS_SEQ:
             self._logger.error("Sequence number wrong", self.sequence_number)
             return False
         # 2. Timestamp should be non negative

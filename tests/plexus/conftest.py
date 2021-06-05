@@ -1,6 +1,6 @@
 # tests/conftest.py
 import collections
-from typing import Any, List, Union
+from typing import List, Union, Dict
 
 import pytest
 from _pytest.config import Config
@@ -15,7 +15,7 @@ from bami.plexus.backbone.utils import (
     encode_links,
     encode_raw,
     GENESIS_LINK,
-    Links,
+    Links, NO_COMMUNITY,
 )
 from tests.plexus.mocking.base import (
     create_and_connect_nodes,
@@ -37,48 +37,40 @@ class FakeBlock(PlexusBlock):
 
     def __init__(
         self,
-        transaction: bytes = None,
+        transaction: Dict = None,
         previous: Links = None,
         key: LibNaCLSK = None,
-        links: Links = None,
-        com_prefix: bytes = b"",
-        com_id: Any = None,
+        community_links: Links = None,
+        community_id: bytes = None,
         block_type: bytes = b"test",
     ):
-        crypto = default_eccrypto
-        if not links:
-            links = GENESIS_LINK
-            com_seq_num = 1
+        if not community_links:
+            community_links = GENESIS_LINK
+            community_sequence_number = 1
         else:
-            com_seq_num = max(links)[0] + 1
+            community_sequence_number = max(community_links)[0] + 1
 
         if not previous:
             previous = GENESIS_LINK
-        pers_seq_num = max(previous)[0] + 1
+        sequence_number = max(previous)[0] + 1
 
-        if not com_id:
-            com_id = crypto.generate_key("curve25519").pub().key_to_bin()
+        if not community_id:
+            community_id = NO_COMMUNITY
 
-        if key:
-            self.key = key
-        else:
-            self.key = crypto.generate_key("curve25519")
-
-        if not transaction:
-            transaction = encode_raw({"id": 42})
+        self.key = key or default_eccrypto.generate_key("curve25519")
+        transaction = transaction or {"id": 42}
 
         PlexusBlock.__init__(
             self,
             (
                 block_type,
-                transaction,
+                encode_raw(transaction),
                 self.key.pub().key_to_bin(),
-                pers_seq_num,
+                sequence_number,
                 encode_links(previous),
-                encode_links(links),
-                com_prefix,
-                com_id,
-                com_seq_num,
+                encode_links(community_links),
+                community_id,
+                community_sequence_number,
                 EMPTY_SIG,
                 0,
                 0,
@@ -101,9 +93,9 @@ def create_block_batch(com_id, num_blocks=100):
     blocks = []
     last_block_point = GENESIS_LINK
     for k in range(num_blocks):
-        blk = FakeBlock(com_id=com_id, links=last_block_point, transaction=None)
+        blk = FakeBlock(community_id=com_id, community_links=last_block_point)
         blocks.append(blk)
-        last_block_point = Links(((blk.com_seq_num, blk.short_hash),))
+        last_block_point = Links(((blk.community_sequence_number, blk.short_hash),))
     return blocks
 
 
@@ -121,7 +113,7 @@ def create_batches():
 
         """
         key = default_eccrypto.generate_key("curve25519")
-        com_id = key.pub().key_to_bin()
+        com_id = key.pub().key_to_hash()
         return [create_block_batch(com_id, num_blocks) for _ in range(num_batches)]
 
     return _create_batches
@@ -130,8 +122,8 @@ def create_batches():
 def insert_to_chain(
     chain_obj: BaseChain, blk: PlexusBlock, personal_chain: bool = True
 ):
-    block_links = blk.links if not personal_chain else blk.previous
-    block_seq_num = blk.com_seq_num if not personal_chain else blk.sequence_number
+    block_links = blk.community_links if not personal_chain else blk.previous
+    block_seq_num = blk.community_sequence_number if not personal_chain else blk.sequence_number
     yield chain_obj.add_block(block_links, block_seq_num, blk.hash)
 
 
@@ -220,7 +212,7 @@ async def set_vals_by_key(
     dirs, nodes = _set_vals_init(tmpdir_factory, overlay_class, num_nodes)
     # Make sure every node has a community to listen to
     community_key = default_eccrypto.generate_key("curve25519").pub()
-    community_id = community_key.key_to_bin()
+    community_id = community_key.key_to_hash()
     if init_nodes:
         _init_nodes(nodes, community_id)
     yield SetupValues(nodes=nodes, community_id=community_id)
@@ -234,7 +226,7 @@ async def set_vals_by_nodes(
 ):
     dirs, nodes = _set_vals_init(tmpdir_factory, overlay_class, num_nodes)
     # Make sure every node has a community to listen to
-    community_id = nodes[0].overlay.my_pub_key_bin
+    community_id = nodes[0].overlay.my_peer.key.key_to_hash()
     context = nodes[0].overlay.state_db.context
     if init_nodes:
         _init_nodes(nodes, community_id)

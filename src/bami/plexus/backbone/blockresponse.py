@@ -9,8 +9,6 @@ from bami.plexus.backbone.exceptions import InvalidTransactionFormatException
 from bami.plexus.backbone.mixins import StatedMixin
 from bami.plexus.backbone.utils import (
     decode_raw,
-    EMPTY_PK,
-    encode_raw,
     CONFIRM_TYPE,
     REJECT_TYPE,
 )
@@ -106,7 +104,7 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
                 )
                 await sleep(_delta)
             else:
-                self.tracked_blocks[block.com_id].pop(block.com_dot, None)
+                self.tracked_blocks[block.community_id].pop(block.com_dot, None)
                 await sleep(0.001)
 
     def confirm(self, block: PlexusBlock, extra_data: Dict = None) -> None:
@@ -117,15 +115,13 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
             extra_data: An optional dictionary with extra data that is appended to the confirmation.
         """
         self.logger.info("Confirming block %s", block)
-        chain_id = block.com_id if block.com_id != EMPTY_PK else block.public_key
-        dot = block.com_dot if block.com_id != EMPTY_PK else block.pers_dot
-        confirm_tx = {b"initiator": block.public_key, b"dot": dot}
+        confirm_tx = {b"initiator": block.public_key, b"dot": block.com_dot}
         if extra_data:
             confirm_tx.update(extra_data)
         block = self.create_signed_block(
-            block_type=CONFIRM_TYPE, transaction=encode_raw(confirm_tx), com_id=chain_id
+            block_type=CONFIRM_TYPE, transaction=confirm_tx, community_id=block.community_id
         )
-        self.share_in_community(block, chain_id)
+        self.share_in_community(block, block.community_id)
 
     def reject(self, block: PlexusBlock, extra_data: Dict = None) -> None:
         """
@@ -135,15 +131,13 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
             block: The PlexusBlock to reject.
             extra_data: Some additional data to append to the reject transaction, e.g., a reason.
         """
-        chain_id = block.com_id if block.com_id != EMPTY_PK else block.public_key
-        dot = block.com_dot if block.com_id != EMPTY_PK else block.pers_dot
-        reject_tx = {b"initiator": block.public_key, b"dot": dot}
+        reject_tx = {b"initiator": block.public_key, b"dot": block.com_dot}
         if extra_data:
             reject_tx.update(extra_data)
         block = self.create_signed_block(
-            block_type=REJECT_TYPE, transaction=encode_raw(reject_tx), com_id=chain_id
+            block_type=REJECT_TYPE, transaction=reject_tx, community_id=block.community_id
         )
-        self.share_in_community(block, chain_id)
+        self.share_in_community(block, block.community_id)
 
     def verify_confirm_tx(self, claimer: bytes, confirm_tx: Dict) -> None:
         # 1. verify claim format

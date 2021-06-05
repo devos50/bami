@@ -20,7 +20,7 @@ class TestBatchInsert:
     def test_insert(self, create_batches, insert_function, chain):
         batches = create_batches(num_batches=1, num_blocks=self.num_blocks)
         last_blk = batches[0][-1]
-        last_blk_link = (last_blk.com_seq_num, last_blk.short_hash)
+        last_blk_link = (last_blk.community_sequence_number, last_blk.short_hash)
         wrap_return(insert_function(chain, batches[0]))
         assert len(chain.terminal) == 1
         assert last_blk_link in chain.terminal
@@ -34,14 +34,14 @@ class TestConflictsInsert:
 
         # Insert first batch sequentially
         last_blk = batches[0][-1]
-        last_blk_link = (last_blk.com_seq_num, last_blk.short_hash)
+        last_blk_link = (last_blk.community_sequence_number, last_blk.short_hash)
         wrap_return(insert_function(chain, batches[0]))
         assert len(chain.terminal) == 1
         assert last_blk_link in chain.terminal
 
         # Insert second batch sequentially
         last_blk = batches[1][-1]
-        last_blk_link = (last_blk.com_seq_num, last_blk.short_hash)
+        last_blk_link = (last_blk.community_sequence_number, last_blk.short_hash)
         wrap_return(insert_function_copy(chain, batches[1]))
         assert len(chain.terminal) == 2
         assert last_blk_link in chain.terminal
@@ -56,7 +56,7 @@ class TestConflictsInsert:
         for batch in batches:
             last_blk = batches[i - 1][-1]
             wrap_return(insert_function(chain, batch))
-            last_blk_link = (last_blk.com_seq_num, last_blk.short_hash)
+            last_blk_link = (last_blk.community_sequence_number, last_blk.short_hash)
             assert len(chain.terminal) == i
             assert last_blk_link in chain.terminal
             i += 1
@@ -371,7 +371,7 @@ class TestNewConsistentDots:
         batches = create_batches(num_batches=1, num_blocks=10)
         for i in range(10):
             blk = batches[0][i]
-            res = chain.add_block(blk.links, blk.com_seq_num, blk.hash)
+            res = chain.add_block(blk.community_links, blk.community_sequence_number, blk.hash)
             assert len(res) == 1
             assert res[0][0] == i + 1
 
@@ -417,15 +417,15 @@ class TestNewConsistentDots:
         last_blk1 = batches[0][-1]
         last_blk2 = batches[1][-1]
 
-        dot1 = (last_blk1.com_seq_num, last_blk1.short_hash)
-        dot2 = (last_blk2.com_seq_num, last_blk2.short_hash)
+        dot1 = (last_blk1.community_sequence_number, last_blk1.short_hash)
+        dot2 = (last_blk2.community_sequence_number, last_blk2.short_hash)
 
         vals = wrap_return(insert_function(chain, batches[0]))
         assert len(vals) == 10
         assert vals[0][0] == 1 and vals[-1][0] == 10
 
-        merge_block = FakeBlock(links=Links((dot1, dot2)))
-        chain.add_block(merge_block.links, merge_block.com_seq_num, merge_block.hash)
+        merge_block = FakeBlock(community_links=Links((dot1, dot2)))
+        chain.add_block(merge_block.community_links, merge_block.community_sequence_number, merge_block.hash)
 
         vals = wrap_return(insert_function(chain, batches[1]))
         assert len(vals) == 11

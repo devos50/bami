@@ -61,9 +61,6 @@ class AuditMixin(BlockSyncMixin, metaclass=ABCMeta):
                 blk = self.create_signed_block(
                     block_type=AUDIT_TYPE,
                     transaction=audit_blob,
-                    prefix=b"w",
-                    com_id=chain_id,
-                    use_consistent_links=False,
                 )
                 self.logger.debug(
                     "Creating audit block on chain %s: %s, com_dot %s, pers_dot %s",

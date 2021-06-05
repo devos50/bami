@@ -45,10 +45,6 @@ class FakeRoutines(CommunityRoutines):
         self.key = self.crypto.generate_key(u"medium")
 
     @property
-    def my_peer_key(self) -> Key:
-        return self.key
-
-    @property
     def my_pub_key(self) -> bytes:
         return self.key.pub().key_to_bin()
 
@@ -99,9 +95,6 @@ class MockSubCommunityRoutines(SubCommunityRoutines):
 
     @property
     def my_subcoms(self) -> Iterable[bytes]:
-        pass
-
-    def add_subcom(self, sub_com: bytes, subcom_obj: BaseSubCommunity) -> None:
         pass
 
     def notify_peers_on_new_subcoms(self) -> None:
@@ -178,12 +171,6 @@ class FakeBackCommunity(PlexusCommunity, BlockResponseMixin):
     def block_response(
         self, block: PlexusBlock, wait_time: float = None, wait_blocks: int = None
     ) -> BlockResponse:
-        pass
-
-    def process_block_unordered(self, blk: PlexusBlock, peer: Peer) -> None:
-        pass
-
-    def received_block_in_order(self, block: PlexusBlock) -> None:
         pass
 
 

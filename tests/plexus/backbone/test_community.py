@@ -2,7 +2,6 @@ from unittest.mock import ANY
 
 from bami.plexus.backbone.payload import (
     BlockBroadcastPayload,
-    RawBlockBroadcastPayload,
 )
 import pytest
 
@@ -36,7 +35,7 @@ def num_nodes():
 
 @pytest.mark.asyncio
 async def test_share_in_community(mocker, set_vals_by_key):
-    blk = FakeBlock(com_id=set_vals_by_key.community_id)
+    blk = FakeBlock(community_id=set_vals_by_key.community_id)
     set_vals_by_key.nodes[0].overlay.share_in_community(
         blk, set_vals_by_key.community_id
     )
@@ -47,7 +46,7 @@ async def test_share_in_community(mocker, set_vals_by_key):
 
 @pytest.mark.asyncio
 async def test_confirm_block(mocker, set_vals_by_key):
-    blk = FakeBlock(com_id=set_vals_by_key.community_id)
+    blk = FakeBlock(community_id=set_vals_by_key.community_id)
     set_vals_by_key.nodes[0].overlay.confirm(blk)
     spy = mocker.spy(set_vals_by_key.nodes[1].overlay, "validate_persist_block")
     await deliver_messages()
@@ -56,7 +55,7 @@ async def test_confirm_block(mocker, set_vals_by_key):
 
 @pytest.mark.asyncio
 async def test_reject_block(mocker, set_vals_by_key):
-    blk = FakeBlock(com_id=set_vals_by_key.community_id)
+    blk = FakeBlock(community_id=set_vals_by_key.community_id)
     set_vals_by_key.nodes[0].overlay.reject(blk)
     spy = mocker.spy(set_vals_by_key.nodes[1].overlay, "validate_persist_block")
     await deliver_messages()
@@ -64,7 +63,6 @@ async def test_reject_block(mocker, set_vals_by_key):
 
 
 def test_init_setup(set_vals_by_key):
-    assert set_vals_by_key.nodes[0].overlay.decode_map[RawBlockBroadcastPayload.msg_id]
     assert set_vals_by_key.nodes[0].overlay.decode_map[BlockBroadcastPayload.msg_id]
 
 

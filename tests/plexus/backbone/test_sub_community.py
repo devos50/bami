@@ -1,6 +1,6 @@
 from ipv8.keyvault.crypto import default_eccrypto
 import pytest
-from bami.plexus.backbone.sub_community import IPv8SubCommunity, SubCommunityMixin
+from bami.plexus.backbone.sub_community import IPv8SubCommunity
 from ipv8.test.mocking.ipv8 import MockIPv8
 
 from tests.plexus.mocking.community import (
@@ -10,7 +10,7 @@ from tests.plexus.mocking.community import (
 )
 
 
-class FakeSubCommunity(SubCommunityMixin, MockSubCommunityRoutines, FakeRoutines):
+class FakeSubCommunity(MockSubCommunityRoutines, FakeRoutines):
     pass
 
 
@@ -47,11 +47,11 @@ class TestSub:
         monkeypatch.setattr(
             MockSubCommunityRoutines, "discovered_peers_by_subcom", lambda _, __: []
         )
-        key = default_eccrypto.generate_key(u"medium").pub().key_to_bin()
+        key = default_eccrypto.generate_key(u"medium").pub()
         monkeypatch.setattr(
             FakeRoutines,
             "ipv8",
-            MockIPv8(u"curve25519", IPv8SubCommunity, subcom_id=key),
+            MockIPv8(u"curve25519", IPv8SubCommunity, subcom_id=key.key_to_hash()),
         )
         f = FakeSubCommunity()
         f.discovery_strategy = MockSubCommunityDiscoveryStrategy(None)

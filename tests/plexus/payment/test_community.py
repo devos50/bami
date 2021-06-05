@@ -3,7 +3,6 @@ from decimal import Decimal
 from bami.plexus.backbone.exceptions import InvalidTransactionFormatException
 from bami.plexus.backbone.payload import (
     BlockBroadcastPayload,
-    RawBlockBroadcastPayload,
 )
 from bami.plexus.backbone.sub_community import IPv8SubCommunityFactory
 from bami.plexus.backbone.utils import Dot, GENESIS_LINK
@@ -52,7 +51,6 @@ class TestInitCommunity:
 
     def test_init_setup(self, set_vals_by_nodes):
         nodes = set_vals_by_nodes.nodes
-        assert nodes[0].overlay.decode_map[RawBlockBroadcastPayload.msg_id]
         assert nodes[0].overlay.decode_map[BlockBroadcastPayload.msg_id]
 
     def test_subscribe(self, set_vals_by_nodes):
