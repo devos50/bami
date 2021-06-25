@@ -1,7 +1,6 @@
 from typing import Any, Optional
 
 from bami.plexus.backbone.datastore.database import BaseDB
-from bami.plexus.backbone.discovery import SubCommunityDiscoveryStrategy
 from bami.plexus.backbone.mixins import StatedMixin
 from bami.plexus.backbone.settings import BamiSettings
 from ipv8.peer import Peer
@@ -32,7 +31,6 @@ class MixinedBackCommunity(FakeBackCommunity, FakeStatedMixin):
         anonymize: bool = False,
         db: BaseDB = None,
         work_dir: str = None,
-        discovery_strategy: SubCommunityDiscoveryStrategy = None,
         settings: BamiSettings = None,
         **kwargs
     ):
@@ -47,7 +45,6 @@ class MixinedBackCommunity(FakeBackCommunity, FakeStatedMixin):
             anonymize,
             db,
             work_dir,
-            discovery_strategy,
             settings,
             **kwargs
         )

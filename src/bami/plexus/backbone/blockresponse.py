@@ -2,15 +2,15 @@ from abc import abstractmethod, ABCMeta
 from asyncio import sleep, ensure_future, PriorityQueue
 from collections import defaultdict
 from enum import Enum
-from typing import Dict
+from logging import Logger
+from typing import Dict, Callable
 
 from bami.plexus.backbone.block import PlexusBlock
 from bami.plexus.backbone.exceptions import InvalidTransactionFormatException
 from bami.plexus.backbone.mixins import StatedMixin
+from bami.plexus.backbone.settings import BamiSettings
 from bami.plexus.backbone.utils import (
     decode_raw,
-    EMPTY_PK,
-    encode_raw,
     CONFIRM_TYPE,
     REJECT_TYPE,
 )
@@ -19,13 +19,17 @@ from bami.plexus.backbone.utils import (
 class BlockResponse(Enum):
     CONFIRM = 1
     REJECT = 2
-    DELAY = 3
+    IGNORE = 3
 
 
 class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
     """
     Adding this mixin class to your overlays enables routines to respond to incoming blocks with another block.
     """
+    logger: Logger
+    settings: BamiSettings
+    create_signed_block: Callable
+    share_in_community: Callable
 
     def setup_mixin(self) -> None:
         # Dictionary chain_id: block_dot -> block
@@ -39,12 +43,11 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
         if not self.block_sign_queue_task.done():
             self.block_sign_queue_task.cancel()
 
-    @abstractmethod
     def block_response(
         self, block: PlexusBlock, wait_time: float = None, wait_blocks: int = None
     ) -> BlockResponse:
         """
-        Respond to block BlockResponse: Reject, Confirm, Delay
+        Respond to block BlockResponse: Reject, Confirm, Ignore
         Args:
             block: to respond to
             wait_time: time that passed since first block process initiated
@@ -52,7 +55,7 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
         Returns:
             BlockResponse: Confirm, Reject or Delay
         """
-        pass
+        return BlockResponse.IGNORE
 
     def confirm_tx_extra_data(self, block: PlexusBlock) -> Dict:
         """
@@ -65,7 +68,7 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
         return {}
 
     def add_block_to_response_processing(self, block: PlexusBlock) -> None:
-        self.counter_signing_block_queue.put_nowait((block.com_seq_num, (0, block)))
+        self.counter_signing_block_queue.put_nowait((block.community_sequence_number, (0, block)))
 
     def process_counter_signing_block(
         self,
@@ -106,7 +109,7 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
                 )
                 await sleep(_delta)
             else:
-                self.tracked_blocks[block.com_id].pop(block.com_dot, None)
+                self.tracked_blocks[block.community_id].pop(block.com_dot, None)
                 await sleep(0.001)
 
     def confirm(self, block: PlexusBlock, extra_data: Dict = None) -> None:
@@ -117,15 +120,13 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
             extra_data: An optional dictionary with extra data that is appended to the confirmation.
         """
         self.logger.info("Confirming block %s", block)
-        chain_id = block.com_id if block.com_id != EMPTY_PK else block.public_key
-        dot = block.com_dot if block.com_id != EMPTY_PK else block.pers_dot
-        confirm_tx = {b"initiator": block.public_key, b"dot": dot}
+        confirm_tx = {b"initiator": block.public_key, b"dot": block.com_dot}
         if extra_data:
             confirm_tx.update(extra_data)
         block = self.create_signed_block(
-            block_type=CONFIRM_TYPE, transaction=encode_raw(confirm_tx), com_id=chain_id
+            block_type=CONFIRM_TYPE, transaction=confirm_tx, community_id=block.community_id
         )
-        self.share_in_community(block, chain_id)
+        self.share_in_community(block, block.community_id)
 
     def reject(self, block: PlexusBlock, extra_data: Dict = None) -> None:
         """
@@ -135,15 +136,13 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
             block: The PlexusBlock to reject.
             extra_data: Some additional data to append to the reject transaction, e.g., a reason.
         """
-        chain_id = block.com_id if block.com_id != EMPTY_PK else block.public_key
-        dot = block.com_dot if block.com_id != EMPTY_PK else block.pers_dot
-        reject_tx = {b"initiator": block.public_key, b"dot": dot}
+        reject_tx = {b"initiator": block.public_key, b"dot": block.com_dot}
         if extra_data:
             reject_tx.update(extra_data)
         block = self.create_signed_block(
-            block_type=REJECT_TYPE, transaction=encode_raw(reject_tx), com_id=chain_id
+            block_type=REJECT_TYPE, transaction=reject_tx, community_id=block.community_id
         )
-        self.share_in_community(block, chain_id)
+        self.share_in_community(block, block.community_id)
 
     def verify_confirm_tx(self, claimer: bytes, confirm_tx: Dict) -> None:
         # 1. verify claim format
@@ -157,8 +156,10 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
         self.verify_confirm_tx(block.public_key, confirm_tx)
         self.apply_confirm_tx(block, confirm_tx)
 
-    @abstractmethod
     def apply_confirm_tx(self, block: PlexusBlock, confirm_tx: Dict) -> None:
+        pass
+
+    def apply_reject_tx(self, block: PlexusBlock, reject_tx: Dict) -> None:
         pass
 
     def verify_reject_tx(self, rejector: bytes, confirm_tx: Dict) -> None:
@@ -173,6 +174,3 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
         self.verify_reject_tx(block.public_key, reject_tx)
         self.apply_reject_tx(block, reject_tx)
 
-    @abstractmethod
-    def apply_reject_tx(self, block: PlexusBlock, reject_tx: Dict) -> None:
-        pass

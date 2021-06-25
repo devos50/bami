@@ -7,13 +7,6 @@ class ComparablePayload(VariablePayload):
 
 
 @vp_compile
-class RawBlockPayload(ComparablePayload):
-    msg_id = 1
-    format_list = ["varlenH"]
-    names = ["block_bytes"]
-
-
-@vp_compile
 class BlockPayload(ComparablePayload):
     msg_id = 2
     format_list = [
@@ -23,8 +16,7 @@ class BlockPayload(ComparablePayload):
         "I",
         "varlenI",
         "varlenI",
-        "varlenI",
-        "74s",
+        "20s",
         "I",
         "64s",
         "Q",
@@ -35,20 +27,12 @@ class BlockPayload(ComparablePayload):
         "public_key",
         "sequence_number",
         "previous",
-        "links",
-        "com_prefix",
-        "com_id",
-        "com_seq_num",
+        "community_links",
+        "community_id",
+        "community_sequence_number",
         "signature",
         "timestamp",
     ]
-
-
-@vp_compile
-class RawBlockBroadcastPayload(ComparablePayload):
-    msg_id = 3
-    format_list = ["varlenH", "I"]
-    names = ["block_bytes", "ttl"]
 
 
 @vp_compile
@@ -67,13 +51,6 @@ class FrontierPayload(ComparablePayload):
     msg_id = 5
     format_list = ["varlenH", "varlenH"]
     names = ["chain_id", "frontier"]
-
-
-@vp_compile
-class ExtendedFrontierPayload(ComparablePayload):
-    msg_id = 6
-    format_list = ["varlenH", "varlenH", "74s", "64s", "varlenH"]
-    names = ["chain_id", "frontier", "pub_key", "signature", "state_blob"]
 
 
 @vp_compile

@@ -17,10 +17,8 @@ class BamiSettings(object):
         self.frontier_gossip_sync_max_delay = 0.1
         # The interval at which we gossip the latest frontier in each community
         self.frontier_gossip_interval = 0.5
-        # The waiting time between processing two collected frontiers
-        self.frontier_gossip_collect_time = 0.2
         # Gossip fanout for frontiers exchange
-        self.frontier_gossip_fanout = 6
+        self.frontier_gossip_fanout = 10
 
         self.block_sign_delta = 0.3
 

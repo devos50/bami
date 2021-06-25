@@ -25,7 +25,7 @@ class TestDBManager:
     @pytest.fixture
     def std_vals(self):
         self.chain_id = b"chain_id"
-        self.block_dot = Dot((3, ShortKey("808080")))
+        self.block_dot = Dot((3, ShortKey(b"808080")))
         self.block_dot_encoded = encode_raw(self.block_dot)
         self.dot_id = self.chain_id + self.block_dot_encoded
 
@@ -35,7 +35,7 @@ class TestDBManager:
 
         self.test_block = FakeBlock()
         self.pers = self.test_block.public_key
-        self.com_id = self.test_block.com_id
+        self.com_id = self.test_block.community_id
 
     def test_get_tx_blob(self, monkeypatch, std_vals):
         monkeypatch.setattr(
@@ -88,7 +88,7 @@ class TestDBManager:
         )
 
         def chain_dots_tester(chain_id, dots):
-            assert chain_id in (self.test_block.public_key, self.test_block.com_id)
+            assert chain_id in (self.test_block.key.key_to_hash(), self.test_block.community_id)
             assert dots == ["dot1", "dot2"]
 
         self.dbms.add_observer(ChainTopic.ALL, chain_dots_tester)
@@ -209,27 +209,27 @@ def test_hot_start_db(tmpdir):
     test_block = FakeBlock()
     packed_block = test_block.pack()
     dbms.add_block(packed_block, test_block)
-    tx_blob = test_block.transaction
+    tx_blob = test_block._transaction
 
-    assert dbms.get_tx_blob_by_dot(test_block.com_id, test_block.com_dot) == tx_blob
+    assert dbms.get_tx_blob_by_dot(test_block.community_id, test_block.com_dot) == tx_blob
     assert (
-        dbms.get_block_blob_by_dot(test_block.com_id, test_block.com_dot)
+        dbms.get_block_blob_by_dot(test_block.community_id, test_block.com_dot)
         == packed_block
     )
-    front = dbms.get_chain(test_block.com_id).frontier
+    front = dbms.get_chain(test_block.community_id).frontier
     dbms.close()
 
     block_store2 = LMDBLockStore(str(tmp_val))
     chain_factory2 = ChainFactory()
     dbms2 = DBManager(chain_factory2, block_store2)
 
-    assert dbms2.get_tx_blob_by_dot(test_block.com_id, test_block.com_dot) == tx_blob
+    assert dbms2.get_tx_blob_by_dot(test_block.community_id, test_block.com_dot) == tx_blob
     assert (
-        dbms2.get_block_blob_by_dot(test_block.com_id, test_block.com_dot)
+        dbms2.get_block_blob_by_dot(test_block.community_id, test_block.com_dot)
         == packed_block
     )
 
-    assert dbms2.get_chain(test_block.com_id).frontier == front
+    assert dbms2.get_chain(test_block.community_id).frontier == front
 
     dbms2.close()
     tmp_val.remove()
@@ -262,17 +262,17 @@ class TestIntegrationDBManager:
         self.test_block = FakeBlock()
         packed_block = self.test_block.pack()
         self.dbms.add_block(packed_block, self.test_block)
-        self.tx_blob = self.test_block.transaction
+        self.tx_blob = self.test_block._transaction
 
         assert (
             self.dbms.get_tx_blob_by_dot(
-                self.test_block.com_id, self.test_block.com_dot
+                self.test_block.community_id, self.test_block.com_dot
             )
             == self.tx_blob
         )
         assert (
             self.dbms.get_block_blob_by_dot(
-                self.test_block.com_id, self.test_block.com_dot
+                self.test_block.community_id, self.test_block.com_dot
             )
             == packed_block
         )
@@ -288,7 +288,7 @@ class TestIntegrationDBManager:
                 self.val_dots.append(dot)
 
         blks = create_batches(num_batches=1, num_blocks=100)
-        com_id = blks[0][0].com_id
+        com_id = blks[0][0].community_id
         self.dbms.add_observer(com_id, chain_dots_tester)
 
         wrap_iterate(insert_function(self.dbms, blks[0]))
@@ -302,7 +302,7 @@ class TestIntegrationDBManager:
                 self.val_dots.append(dot)
 
         blks = create_batches(num_batches=2, num_blocks=100)
-        com_id = blks[0][0].com_id
+        com_id = blks[0][0].community_id
         self.dbms.add_observer(com_id, chain_dots_tester)
 
         wrap_iterate(insert_function(self.dbms, blks[0][:20]))
@@ -316,7 +316,7 @@ class TestIntegrationDBManager:
     def test_blocks_by_frontier_diff(self, create_batches, insert_function):
         # init chain
         blks = create_batches(num_batches=2, num_blocks=100)
-        com_id = blks[0][0].com_id
+        com_id = blks[0][0].community_id
 
         wrap_iterate(insert_function(self.dbms, blks[0][:50]))
         wrap_iterate(insert_function(self.dbms2, blks[1][:50]))
@@ -342,7 +342,7 @@ class TestIntegrationDBManager:
     def test_blocks_by_fdiff_with_holes(self, create_batches, insert_function):
         # init chain
         blks = create_batches(num_batches=2, num_blocks=100)
-        com_id = blks[0][0].com_id
+        com_id = blks[0][0].community_id
         self.val_dots = []
 
         def chain_dots_tester(chain_id, dots):

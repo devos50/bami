@@ -36,6 +36,8 @@ from bami.plexus.payment.settings import PaymentSettings
 from bami.plexus.payment.utils import MINT_TYPE, SPEND_TYPE
 import cachetools
 
+from ipv8.peer import Peer
+
 """
 Exchange of the value within one community, where value lives only in one community.
  - The community has the identity with the key of the master peer.
@@ -81,13 +83,13 @@ class PaymentCommunity(
 
         # Witness chain:
         # - Gossip witness updates on the sub-chain
-        self.start_frontier_gossip_sync(sub_com_id, prefix=b"w")
+        self.start_frontier_gossip_sync(sub_com_id)
         # - Process witness block out of order
         self.subscribe_out_order_block(b"w" + sub_com_id, self.process_witness_block)
         # - Witness all updates on payment chain
         self.should_audit_subcom[sub_com_id] = self.settings.should_audit_block
 
-    def received_block_in_order(self, block: PlexusBlock) -> None:
+    def process_block_ordered(self, block: PlexusBlock) -> None:
         if block.com_dot in self.state_db.applied_dots:
             raise Exception(
                 "Block already applied?",
@@ -361,7 +363,7 @@ class PaymentCommunity(
                 wait_blocks and wait_blocks > self.settings.max_wait_block
             ):
                 return BlockResponse.REJECT
-            return BlockResponse.DELAY
+            return BlockResponse.IGNORE
         if not stat[1][peer_id][1] or not stat[1][peer_id][0]:
             # If chain is forked or negative balance => reject
             return BlockResponse.REJECT
@@ -376,7 +378,7 @@ class PaymentCommunity(
         if len(self.peer_conf[(block.com_id, block.com_seq_num)]) >= f:
             return BlockResponse.CONFIRM
         else:
-            return BlockResponse.DELAY
+            return BlockResponse.IGNORE
 
     def dot_reachable(self, chain_id: bytes, target_dot: Dot, block_dot: Dot):
         val = self.reachability_cache[(chain_id, target_dot)].get(block_dot)
@@ -496,3 +498,16 @@ class PaymentCommunity(
 
     def confirm_tx_extra_data(self, block: PlexusBlock) -> Dict:
         return {b"value": decode_raw(block.transaction).get(b"value")}
+
+    def get_peer_by_key(
+        self, peer_key: bytes, subcom_id: bytes = None
+    ) -> Optional[Peer]:
+        if subcom_id:
+            subcom_peers = self.get_subcom(subcom_id).get_known_peers()
+            for peer in subcom_peers:
+                if peer.public_key.key_to_bin() == peer_key:
+                    return peer
+        for peer in self.get_peers():
+            if peer.public_key.key_to_bin() == peer_key:
+                return peer
+        return None

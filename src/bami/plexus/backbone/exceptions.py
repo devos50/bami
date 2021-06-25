@@ -10,11 +10,7 @@ class InvalidBlockException(Exception):
     pass
 
 
-class SubCommunityEmptyException(Exception):
-    pass
-
-
-class IPv8UnavailableException(Exception):
+class InvalidSubCommunityIdException(Exception):
     pass
 
 

@@ -4,6 +4,7 @@ This file contains everything related to persistence for TrustChain.
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum
+from hashlib import sha1
 from typing import Dict, Iterable, Optional, Set, Tuple
 
 from bami.plexus.backbone.block import PlexusBlock
@@ -283,58 +284,49 @@ class DBManager(BaseDB):
         return self.block_store.get_block_by_hash(block_hash) is not None
 
     def add_block(self, block_blob: bytes, block: PlexusBlock) -> None:
-
         block_hash = block.hash
-        block_tx = block.transaction
 
         # 1. Add block blob and transaction blob to the block storage
         self.block_store.add_block(block_hash, block_blob)
-        self.block_store.add_tx(block_hash, block_tx)
+        self.block_store.add_tx(block_hash, block._transaction)
         self.block_store.add_extra(block_hash, encode_raw({b"type": block.type}))
 
         # 2. There are two chains: personal and community chain
-        pers = block.public_key
-        com = block.com_id
-
-        if pers == com:
-            pers = block.com_prefix + pers
-            com = block.com_prefix + com
-        else:
-            com = block.com_prefix + com
+        personal_chain_id = sha1(block.public_key).digest()
+        community_id = block.community_id
 
         # 2.1: Process the block wrt personal chain
-        if pers not in self.chains:
-            self.chains[pers] = self.chain_factory.create_chain()
+        if personal_chain_id not in self.chains:
+            self.chains[personal_chain_id] = self.chain_factory.create_chain()
 
         pers_block_dot = Dot((block.sequence_number, block.short_hash))
-        pers_dots_list = self.chains[pers].add_block(
+        pers_dots_list = self.chains[personal_chain_id].add_block(
             block.previous, block.sequence_number, block_hash
         )
-        full_dot_id = pers + encode_raw(pers_block_dot)
+        full_dot_id = personal_chain_id + encode_raw(pers_block_dot)
         self.block_store.add_dot(full_dot_id, block_hash)
         # TODO: add more chain topic
 
         # Notify subs of the personal chain
-        self.notify(ChainTopic.ALL, chain_id=pers, dots=pers_dots_list)
-        self.notify(ChainTopic.PERSONAL, chain_id=pers, dots=pers_dots_list)
-        self.notify(pers, chain_id=pers, dots=pers_dots_list)
+        self.notify(ChainTopic.ALL, chain_id=personal_chain_id, dots=pers_dots_list)
+        self.notify(ChainTopic.PERSONAL, chain_id=personal_chain_id, dots=pers_dots_list)
+        self.notify(personal_chain_id, chain_id=personal_chain_id, dots=pers_dots_list)
 
         # 2.2: add block to the community chain
-
-        if com != EMPTY_PK:
-            if com == pers:
+        if community_id != EMPTY_PK:
+            if community_id == personal_chain_id:
                 # Chain was processed already, notify rest
-                self.notify(ChainTopic.GROUP, chain_id=com, dots=pers_dots_list)
+                self.notify(ChainTopic.GROUP, chain_id=community_id, dots=pers_dots_list)
             else:
-                if com not in self.chains:
-                    self.chains[com] = self.chain_factory.create_chain()
-                com_block_dot = Dot((block.com_seq_num, block.short_hash))
-                com_dots_list = self.chains[com].add_block(
-                    block.links, block.com_seq_num, block_hash
+                if community_id not in self.chains:
+                    self.chains[community_id] = self.chain_factory.create_chain()
+                com_block_dot = Dot((block.community_sequence_number, block.short_hash))
+                com_dots_list = self.chains[community_id].add_block(
+                    block.community_links, block.community_sequence_number, block_hash
                 )
-                full_dot_id = com + encode_raw(com_block_dot)
+                full_dot_id = community_id + encode_raw(com_block_dot)
                 self.block_store.add_dot(full_dot_id, block_hash)
 
-                self.notify(ChainTopic.ALL, chain_id=com, dots=com_dots_list)
-                self.notify(ChainTopic.GROUP, chain_id=com, dots=com_dots_list)
-                self.notify(com, chain_id=com, dots=com_dots_list)
+                self.notify(ChainTopic.ALL, chain_id=community_id, dots=com_dots_list)
+                self.notify(ChainTopic.GROUP, chain_id=community_id, dots=com_dots_list)
+                self.notify(community_id, chain_id=community_id, dots=com_dots_list)

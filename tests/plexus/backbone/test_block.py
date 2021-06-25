@@ -11,7 +11,7 @@ from bami.plexus.backbone.utils import (
     GENESIS_DOT,
     Links,
     shorten,
-    ShortKey,
+    ShortKey, NO_COMMUNITY,
 )
 from bami.plexus.backbone.payload import BlockPayload
 
@@ -38,14 +38,18 @@ class TestChainBlock:
         block = FakeBlock()
         assert shorten(block.hash) == block.short_hash
 
+    def test_readable_short_hash(self):
+        block = FakeBlock()
+        assert len(block.readable_short_hash) == 16
+
     def test_create_genesis(self):
         """
         Test creating a genesis block
         """
-        key = default_eccrypto.generate_key(u"curve25519")
+        key = default_eccrypto.generate_key("curve25519")
         db = MockDBManager()
         block = PlexusBlock.create(
-            b"test", encode_raw({b"id": 42}), db, key.pub().key_to_bin()
+            b"test", {b"id": 43}, db, key.pub().key_to_bin()
         )
 
         assert block.previous == Links((GENESIS_DOT,))
@@ -53,9 +57,9 @@ class TestChainBlock:
         assert block.public_key == key.pub().key_to_bin()
         assert block.signature == EMPTY_SIG
         assert block.type == b"test"
-        assert block.transaction == encode_raw({b"id": 42})
-        assert block.com_id == EMPTY_PK
-        assert block.com_seq_num == UNKNOWN_SEQ
+        assert block.transaction == {b"id": 43}
+        assert block.community_id == NO_COMMUNITY
+        assert block.community_sequence_number == UNKNOWN_SEQ
 
     def test_create_next_pers(self, monkeypatch):
         """
@@ -72,7 +76,7 @@ class TestChainBlock:
         )
 
         block = PlexusBlock.create(
-            b"test", encode_raw({b"id": 42}), db, prev.public_key
+            b"test", {b"id": 42}, db, prev.public_key
         )
 
         assert block.previous == Links((prev.pers_dot,))
@@ -80,15 +84,15 @@ class TestChainBlock:
         assert block.public_key == prev.public_key
         assert block.signature == EMPTY_SIG
         assert block.type == b"test"
-        assert block.transaction == encode_raw({b"id": 42})
-        assert block.com_id == EMPTY_PK
-        assert block.com_seq_num == UNKNOWN_SEQ
+        assert block.transaction == {b"id": 42}
+        assert block.community_id == NO_COMMUNITY
+        assert block.community_sequence_number == UNKNOWN_SEQ
 
     def test_create_link_to_pers(self, monkeypatch):
         """
-        Test creating a linked half block
+        Test creating a Plexus block that links to the previous block in the peers' personal chain
         """
-        key = default_eccrypto.generate_key(u"curve25519")
+        key = default_eccrypto.generate_key("curve25519")
         db = MockDBManager()
         link = FakeBlock()
 
@@ -101,60 +105,49 @@ class TestChainBlock:
             MockChain, "consistent_terminal", Links((link.pers_dot,)),
         )
         block = PlexusBlock.create(
-            b"test",
-            encode_raw({"id": 42}),
-            db,
-            key.pub().key_to_bin(),
-            com_id=link.public_key,
+            b"test", {b"id": 42}, db, key.pub().key_to_bin(), community_id=NO_COMMUNITY,
         )
 
-        # include the personal community
-
-        # Attach to the
-        assert block.links == Links((link.pers_dot,))
         assert block.previous == Links((GENESIS_DOT,))
         assert block.sequence_number == GENESIS_SEQ
-        assert block.com_seq_num == link.sequence_number + 1
+        assert block.community_sequence_number == 1
         assert block.public_key == key.pub().key_to_bin()
         assert block.signature == EMPTY_SIG
         assert block.type == b"test"
-        assert block.transaction == encode_raw({"id": 42})
-        assert block.com_id == link.public_key
+        assert block.transaction == {b"id": 42}
+        assert block.community_id == NO_COMMUNITY
 
     def test_create_link_to_com_chain(self, monkeypatch):
         """
         Test creating a linked half that points back towards a previous block
         """
         key = default_eccrypto.generate_key(u"curve25519")
-        com_key = default_eccrypto.generate_key(u"curve25519").pub().key_to_bin()
+        community_id = b"a" * 20
         db = MockDBManager()
-        com_link = Links(((1, ShortKey("30303030")),))
-        link = FakeBlock(com_id=com_key, links=com_link)
+        com_link = Links(((1, ShortKey(b"aaaaaaaa")),))
+        link = FakeBlock(community_id=community_id, community_links=com_link)
 
         monkeypatch.setattr(
             MockDBManager,
             "get_chain",
-            lambda _, chain_id: MockChain() if chain_id == com_key else None,
+            lambda _, chain_id: MockChain() if chain_id == community_id else None,
         )
         monkeypatch.setattr(
             MockChain, "consistent_terminal", Links((link.com_dot,)),
         )
         block = PlexusBlock.create(
-            b"test", encode_raw({"id": 42}), db, key.pub().key_to_bin(), com_id=com_key
+            b"test", {b"id": 42}, db, key.pub().key_to_bin(), community_id=community_id
         )
 
-        # include the personal community
-
-        # Attach to the
-        assert block.links == Links((link.com_dot,))
+        assert block.community_links == Links((link.com_dot,))
         assert block.previous == Links((GENESIS_DOT,))
         assert block.sequence_number == GENESIS_SEQ
-        assert block.com_seq_num == link.com_seq_num + 1
+        assert block.community_sequence_number == link.community_sequence_number + 1
         assert block.public_key == key.pub().key_to_bin()
         assert block.signature == EMPTY_SIG
         assert block.type == b"test"
-        assert block.transaction == encode_raw({"id": 42})
-        assert block.com_id == com_key
+        assert block.transaction == {b"id": 42}
+        assert block.community_id == community_id
 
     def test_invariant_negative_timestamp(self):
         """
@@ -185,7 +178,7 @@ class TestChainBlock:
         Test if illegal key blocks are not valid.
         """
         block = FakeBlock()
-        block.com_seq_num = -1
+        block.community_sequence_number = -1
         assert not block.block_invariants_valid()
 
     def test_invalid_sign(self):
