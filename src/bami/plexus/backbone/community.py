@@ -19,7 +19,6 @@ from bami.plexus.backbone.datastore.database import BaseDB, ChainTopic, DBManage
 from bami.plexus.backbone.datastore.frontiers import Frontier
 from bami.plexus.backbone.exceptions import (
     DatabaseDesynchronizedException,
-    SubCommunityEmptyException,
     UnknownChainException,
 )
 from bami.plexus.backbone.gossip import SubComGossipMixin
@@ -136,7 +135,7 @@ class PlexusCommunity(
             # Add the sub-community to the main overlay
             self.my_subscriptions[subcom_id] = subcom
 
-    def is_subscribed(self, community_id: bytes) -> bool:
+    def has_joined_community(self, community_id: bytes) -> bool:
         return community_id in self.my_subcoms
 
     def subscribe_to_subcom(self, subcom_id: bytes) -> None:
@@ -235,7 +234,7 @@ class PlexusCommunity(
 
     # ---- Introduction handshakes => Exchange your subscriptions ----------------
     def create_introduction_request(
-        self, socket_address: Any, extra_bytes: bytes = b"", new_style: bool = False
+        self, socket_address: Any, extra_bytes: bytes = b"", new_style: bool = False, prefix: Optional[bytes] = None
     ):
         extra_bytes = encode_raw(self.my_subcoms)
         return super().create_introduction_request(

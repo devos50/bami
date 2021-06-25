@@ -9,18 +9,13 @@ from bami.plexus.backbone.community_routines import (
     MessageStateMachine,
 )
 from bami.plexus.backbone.datastore.database import BaseDB
-from bami.plexus.backbone.discovery import SubCommunityDiscoveryStrategy
 from bami.plexus.backbone.settings import BamiSettings
 from bami.plexus.backbone.sub_community import (
     BaseSubCommunity,
-    BaseSubCommunityFactory,
-    IPv8SubCommunityFactory,
-    LightSubCommunityFactory,
     SubCommunityRoutines,
 )
 from ipv8.community import Community
 from ipv8.keyvault.crypto import default_eccrypto
-from ipv8.keyvault.keys import Key
 from ipv8.peer import Peer
 from ipv8.requestcache import RequestCache
 
@@ -71,21 +66,6 @@ class MockSubCommuntiy(BaseSubCommunity):
         pass
 
 
-class MockSubCommunityDiscoveryStrategy(SubCommunityDiscoveryStrategy):
-    def discover(
-        self,
-        subcom: BaseSubCommunity,
-        target_peers: int = 20,
-        discovery_params: Dict[str, Any] = None,
-    ) -> None:
-        pass
-
-
-class MockSubCommunityFactory(BaseSubCommunityFactory):
-    def create_subcom(self, *args, **kwargs) -> BaseSubCommunity:
-        return MockSubCommuntiy()
-
-
 class MockSubCommunityRoutines(SubCommunityRoutines):
     def discovered_peers_by_subcom(self, subcom_id) -> Iterable[Peer]:
         pass
@@ -102,12 +82,6 @@ class MockSubCommunityRoutines(SubCommunityRoutines):
 
     def on_join_subcommunity(self, sub_com_id: bytes) -> None:
         pass
-
-    @property
-    def subcom_factory(
-        self,
-    ) -> Union[BaseSubCommunityFactory, Type[BaseSubCommunityFactory]]:
-        return MockSubCommunityFactory()
 
 
 class MockSettings(object):
@@ -156,12 +130,6 @@ class MockedCommunity(Community, CommunityRoutines):
 class FakeBackCommunity(PlexusCommunity, BlockResponseMixin):
     community_id = b"\x00" * 20
 
-    def incoming_frontier_queue(self, subcom_id: bytes) -> Queue:
-        pass
-
-    def create_subcom(self, *args, **kwargs) -> BaseSubCommunity:
-        pass
-
     def apply_confirm_tx(self, block: PlexusBlock, confirm_tx: Dict) -> None:
         pass
 
@@ -172,11 +140,3 @@ class FakeBackCommunity(PlexusCommunity, BlockResponseMixin):
         self, block: PlexusBlock, wait_time: float = None, wait_blocks: int = None
     ) -> BlockResponse:
         pass
-
-
-class FakeIPv8BackCommunity(IPv8SubCommunityFactory, FakeBackCommunity):
-    pass
-
-
-class FakeLightBackCommunity(LightSubCommunityFactory, FakeBackCommunity):
-    pass

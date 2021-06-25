@@ -2,11 +2,13 @@ from abc import abstractmethod, ABCMeta
 from asyncio import sleep, ensure_future, PriorityQueue
 from collections import defaultdict
 from enum import Enum
-from typing import Dict
+from logging import Logger
+from typing import Dict, Callable
 
 from bami.plexus.backbone.block import PlexusBlock
 from bami.plexus.backbone.exceptions import InvalidTransactionFormatException
 from bami.plexus.backbone.mixins import StatedMixin
+from bami.plexus.backbone.settings import BamiSettings
 from bami.plexus.backbone.utils import (
     decode_raw,
     CONFIRM_TYPE,
@@ -24,6 +26,10 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
     """
     Adding this mixin class to your overlays enables routines to respond to incoming blocks with another block.
     """
+    logger: Logger
+    settings: BamiSettings
+    create_signed_block: Callable
+    share_in_community: Callable
 
     def setup_mixin(self) -> None:
         # Dictionary chain_id: block_dot -> block
@@ -63,7 +69,7 @@ class BlockResponseMixin(StatedMixin, metaclass=ABCMeta):
         return {}
 
     def add_block_to_response_processing(self, block: PlexusBlock) -> None:
-        self.counter_signing_block_queue.put_nowait((block.com_seq_num, (0, block)))
+        self.counter_signing_block_queue.put_nowait((block.community_sequence_number, (0, block)))
 
     def process_counter_signing_block(
         self,

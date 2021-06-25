@@ -1,6 +1,5 @@
 from unittest.mock import ANY
 
-from bami.plexus.backbone.block import PlexusBlock
 from bami.plexus.backbone.block_sync import BlockSyncMixin
 from bami.plexus.backbone.payload import (
     BlockBroadcastPayload,

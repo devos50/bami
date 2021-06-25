@@ -55,8 +55,8 @@ class TestInitCommunity:
 
     def test_subscribe(self, set_vals_by_nodes):
         nodes = set_vals_by_nodes.nodes
-        assert nodes[0].overlay.is_subscribed(set_vals_by_nodes.community_id)
-        assert nodes[1].overlay.is_subscribed(set_vals_by_nodes.community_id)
+        assert nodes[0].overlay.has_joined_community(set_vals_by_nodes.community_id)
+        assert nodes[1].overlay.has_joined_community(set_vals_by_nodes.community_id)
 
 
 class TestMint:
