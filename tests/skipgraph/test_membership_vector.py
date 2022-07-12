@@ -1,6 +1,6 @@
 import pytest
 
-from bami.skipgraph.membership_vector import MembershipVector, MEMBERSHIP_VECTOR_DIGITS
+from bami.skipgraph.membership_vector import MembershipVector
 
 
 @pytest.fixture
@@ -10,21 +10,25 @@ def membership_vector() -> MembershipVector:
 
 def test_init(membership_vector):
     assert membership_vector.val
-    assert len(membership_vector.val) == MEMBERSHIP_VECTOR_DIGITS
+    assert len(membership_vector.val) == MembershipVector.LENGTH
 
     # Custom initialization
-    vector = MembershipVector(32)
+    vector = MembershipVector([0, 0, 0, 0, 0, 1])
     assert vector.val[5] == 1  # This bit should be set
 
 
-def test_common_prefix_length():
-    vector1 = MembershipVector(32)
-    vector2 = MembershipVector(32)
-    assert vector1.common_prefix_length(vector2) == MEMBERSHIP_VECTOR_DIGITS
+def test_to_bytes(membership_vector):
+    assert isinstance(membership_vector.to_bytes(), bytes)
+    assert len(membership_vector.to_bytes()) == membership_vector.LENGTH
 
-    vector3 = MembershipVector(16)
-    assert vector1.common_prefix_length(vector3) == 4
 
-    vector4 = MembershipVector(11)
-    vector5 = MembershipVector(1)
-    assert vector4.common_prefix_length(vector5) == 1
+def test_from_bytes():
+    mv = MembershipVector.from_bytes(b"\x00\x01\x00\x01")
+    assert mv.val[0] == 0
+    assert mv.val[1] == 1
+    assert mv.val[2] == 0
+    assert mv.val[3] == 1
+
+
+def test_str(membership_vector):
+    assert isinstance(str(membership_vector), str)

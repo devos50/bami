@@ -1,4 +1,4 @@
-from bami.skipgraph import LEFT
+from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
@@ -43,7 +43,7 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
         max_level = await self.nodes[0].overlay.get_max_level(self.nodes[1].overlay.my_peer)
         assert max_level == 0
 
-        self.nodes[1].overlay.routing_table.extend(2)
+        self.nodes[1].overlay.routing_table.max_level = 3
         max_level = await self.nodes[0].overlay.get_max_level(self.nodes[1].overlay.my_peer)
         assert max_level == 3
 
@@ -52,7 +52,6 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
         assert not found
 
         # Give node 1 a left neighbour on level 0
-        self.nodes[1].overlay.routing_table.extend(0)
         self.nodes[1].overlay.routing_table.levels[0].neighbors[LEFT] = \
             SGNode(UDPv4Address("1.1.1.1", 1234), b"1234", 42, MembershipVector.from_bytes(b""))
 
@@ -64,14 +63,24 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
 
     async def test_join(self):
         await self.introduce_nodes()
-        await self.nodes[0].overlay.join()
+        await self.nodes[0].overlay.join(introducer_peer=self.nodes[1].overlay.my_peer)
+        assert self.nodes[0].overlay.routing_table.height() == 3
+        assert self.nodes[1].overlay.routing_table.height() == 3
+
+    async def test_search(self):
+        await self.introduce_nodes()
+        await self.nodes[0].overlay.join(introducer_peer=self.nodes[1].overlay.my_peer)
+        result = await self.nodes[1].overlay.search(0)
+        assert result.key == 0
+        result = await self.nodes[1].overlay.search(1)
+        assert result.key == 1
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
     NUM_NODES = 7
 
     def setUp(self):
-        super(TestSkipGraphCommunityLargeJoin, self).setUp()
+        super(TestSkipGraphCommunityBase, self).setUp()
         self.initialize(SkipGraphCommunity, self.NUM_NODES)
 
         MembershipVector.LENGTH = 2
@@ -86,15 +95,93 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
 
         self.initialize_routing_tables(nodes_info)
 
+    def assert_not_self_in_rt(self):
+        """
+        Make sure that we don't add ourselves to the routing tables.
+        """
+        for node in self.nodes:
+            for level in node.overlay.routing_table.levels:
+                assert not level.neighbors[LEFT] or level.neighbors[LEFT].key != node.overlay.routing_table.key
+                assert not level.neighbors[RIGHT] or level.neighbors[RIGHT].key != node.overlay.routing_table.key
+
     async def test_join(self):
+        """
+        Test the graph example from the original Skip Graphs paper (page 8):
+        https://www.researchgate.net/profile/Gauri-Shah-4/publication/1956507_Skip_Graphs/links/576a91a208aef2a864d1dcd4/Skip-Graphs.pdf
+        """
         await self.introduce_nodes()
-        await self.nodes[0].overlay.join(introducer_peer=self.nodes[4].overlay.my_peer)
-        await self.nodes[1].overlay.join(introducer_peer=self.nodes[4].overlay.my_peer)
-        await self.nodes[2].overlay.join(introducer_peer=self.nodes[4].overlay.my_peer)
-        await self.nodes[3].overlay.join(introducer_peer=self.nodes[4].overlay.my_peer)
-        await self.nodes[4].overlay.join(introducer_peer=self.nodes[0].overlay.my_peer)
-        # for node in self.nodes:
-        #    await node.overlay.join()
+
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+            self.assert_not_self_in_rt()
 
         for ind, node in enumerate(self.nodes):
             node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
+
+        # Verify the Skip Graph
+
+        # Level 0
+        assert not self.nodes[0].overlay.routing_table.levels[0].neighbors[LEFT]
+        assert self.nodes[0].overlay.routing_table.levels[0].neighbors[RIGHT].key == 21
+
+        assert self.nodes[1].overlay.routing_table.levels[0].neighbors[LEFT].key == 13
+        assert self.nodes[1].overlay.routing_table.levels[0].neighbors[RIGHT].key == 33
+
+        assert self.nodes[2].overlay.routing_table.levels[0].neighbors[LEFT].key == 21
+        assert self.nodes[2].overlay.routing_table.levels[0].neighbors[RIGHT].key == 36
+
+        assert self.nodes[3].overlay.routing_table.levels[0].neighbors[LEFT].key == 33
+        assert self.nodes[3].overlay.routing_table.levels[0].neighbors[RIGHT].key == 48
+
+        assert self.nodes[4].overlay.routing_table.levels[0].neighbors[LEFT].key == 36
+        assert self.nodes[4].overlay.routing_table.levels[0].neighbors[RIGHT].key == 75
+
+        assert self.nodes[5].overlay.routing_table.levels[0].neighbors[LEFT].key == 48
+        assert self.nodes[5].overlay.routing_table.levels[0].neighbors[RIGHT].key == 99
+
+        assert self.nodes[6].overlay.routing_table.levels[0].neighbors[LEFT].key == 75
+        assert not self.nodes[6].overlay.routing_table.levels[0].neighbors[RIGHT]
+
+        # Level 1
+        assert not self.nodes[0].overlay.routing_table.levels[1].neighbors[LEFT]
+        assert self.nodes[0].overlay.routing_table.levels[1].neighbors[RIGHT].key == 33
+
+        assert not self.nodes[1].overlay.routing_table.levels[1].neighbors[LEFT]
+        assert self.nodes[1].overlay.routing_table.levels[1].neighbors[RIGHT].key == 75
+
+        assert self.nodes[2].overlay.routing_table.levels[1].neighbors[LEFT].key == 13
+        assert self.nodes[2].overlay.routing_table.levels[1].neighbors[RIGHT].key == 36
+
+        assert self.nodes[3].overlay.routing_table.levels[1].neighbors[LEFT].key == 33
+        assert self.nodes[3].overlay.routing_table.levels[1].neighbors[RIGHT].key == 48
+
+        assert self.nodes[4].overlay.routing_table.levels[1].neighbors[LEFT].key == 36
+        assert not self.nodes[4].overlay.routing_table.levels[1].neighbors[RIGHT]
+
+        assert self.nodes[5].overlay.routing_table.levels[1].neighbors[LEFT].key == 21
+        assert self.nodes[5].overlay.routing_table.levels[1].neighbors[RIGHT].key == 99
+
+        assert self.nodes[6].overlay.routing_table.levels[1].neighbors[LEFT].key == 75
+        assert not self.nodes[6].overlay.routing_table.levels[1].neighbors[RIGHT]
+
+        # Level 2
+        assert not self.nodes[0].overlay.routing_table.levels[2].neighbors[LEFT]
+        assert self.nodes[0].overlay.routing_table.levels[2].neighbors[RIGHT].key == 48
+
+        assert not self.nodes[1].overlay.routing_table.levels[2].neighbors[LEFT]
+        assert not self.nodes[1].overlay.routing_table.levels[2].neighbors[RIGHT]
+
+        assert not self.nodes[2].overlay.routing_table.levels[2].neighbors[LEFT]
+        assert self.nodes[2].overlay.routing_table.levels[2].neighbors[RIGHT].key == 36
+
+        assert self.nodes[3].overlay.routing_table.levels[2].neighbors[LEFT].key == 33
+        assert not self.nodes[3].overlay.routing_table.levels[2].neighbors[RIGHT]
+
+        assert self.nodes[4].overlay.routing_table.levels[2].neighbors[LEFT].key == 13
+        assert not self.nodes[4].overlay.routing_table.levels[2].neighbors[RIGHT]
+
+        assert not self.nodes[5].overlay.routing_table.levels[2].neighbors[LEFT]
+        assert self.nodes[5].overlay.routing_table.levels[2].neighbors[RIGHT].key == 99
+
+        assert self.nodes[6].overlay.routing_table.levels[2].neighbors[LEFT].key == 75
+        assert not self.nodes[6].overlay.routing_table.levels[2].neighbors[RIGHT]

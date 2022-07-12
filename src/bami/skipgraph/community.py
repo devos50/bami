@@ -59,35 +59,48 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(SearchPayload)
     def on_search_request(self, peer: Peer, payload: SearchPayload):
-        self.logger.info("Received search request from peer %s", peer)
+        self.logger.info("Peer %s received search request from peer %s for key %d (start at level %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         payload.search_key, payload.level)
+
+        originator_node = SGNode.from_payload(payload.originator)
 
         if self.routing_table.key == payload.search_key:
             # Send this nodes' info back to the search originator
-            self.ez_send(peer, SearchResponsePayload(payload.identifier, self.get_my_node().to_payload()))
+            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload())
+            self.ez_send(originator_node.get_peer(), response_payload)
             return
         elif self.routing_table.key < payload.search_key:
-            level = payload.level
+            level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                if level in self.routing_table.levels and self.routing_table.levels[level].neighbors[RIGHT] <= payload.search_key:
-                    self.ez_send(peer, SearchPayload(payload.identifier, payload.initiator, payload.search_key, level))
-                    return
-                level -= 1
+                neighbour = self.routing_table.levels[level].neighbors[RIGHT]
+                if neighbour and neighbour.key <= payload.search_key:
+                    self.ez_send(neighbour.get_peer(), SearchPayload(payload.identifier, payload.originator,
+                                                                     payload.search_key, level))
+                    break
+                else:
+                    level -= 1
         else:
-            level = payload.level
+            level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                if level in self.routing_table.levels and self.routing_table.levels[level].neighbors[LEFT] >= payload.search_key:
-                    self.ez_send(peer, SearchPayload(payload.identifier, payload.initiator, payload.search_key, level))
-                    return
-                level -= 1
+                neighbour = self.routing_table.levels[level].neighbors[LEFT]
+                if neighbour and neighbour.key >= payload.search_key:
+                    self.ez_send(neighbour.get_peer(), SearchPayload(payload.identifier, payload.originator,
+                                                                     payload.search_key, level))
+                    break
+                else:
+                    level -= 1
 
-        # We exhausted our search - return ourselves as result
+        # We exhausted our search - return ourselves as result to the search originator
         if level < 0:
-            self.logger.debug("Search exhausted - returning self (%s) as search result", self.my_peer)
-            self.ez_send(peer, SearchResponsePayload(payload.identifier, self.get_my_node().to_payload()))
+            self.logger.debug("Peer %s exhausted search - returning self as search result", self.get_my_short_id())
+            self.ez_send(originator_node.get_peer(),
+                         SearchResponsePayload(payload.identifier, self.get_my_node().to_payload()))
 
     @lazy_wrapper(SearchResponsePayload)
     def on_search_response(self, peer: Peer, payload: SearchResponsePayload):
-        self.logger.info("Received search response from peer %s", peer)
+        self.logger.info("Peer %s received search response from peer %s (key: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.response.key)
 
         if not self.request_cache.has("search", payload.identifier):
             self.logger.warning("search cache with id %s not found", payload.identifier)
@@ -114,7 +127,7 @@ class SkipGraphCommunity(Community):
             self.logger.warning("Routing table not initialized - not responding to max level request")
             return
 
-        self.ez_send(peer, MaxLevelResponsePayload(payload.identifier, self.routing_table.height()))
+        self.ez_send(peer, MaxLevelResponsePayload(payload.identifier, self.routing_table.max_level))
 
     @lazy_wrapper(MaxLevelResponsePayload)
     def on_max_level_response(self, peer: Peer, payload: MaxLevelResponsePayload):
@@ -130,7 +143,8 @@ class SkipGraphCommunity(Community):
         """
         Query the left/right neighbour of a particular peer in its Skip Graph.
         """
-        self.logger.info("Querying neighbour of peer %s (side: %d, level: %d)", peer, side, level)
+        self.logger.info("Peer %s querying neighbour of peer %s (side: %d, level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), side, level)
 
         cache = NeighbourRequestCache(self)
         self.request_cache.add(cache)
@@ -140,8 +154,9 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(NeighbourRequestPayload)
     def on_neighbour_request(self, peer: Peer, payload: NeighbourRequestPayload):
-        self.logger.info("Received neighbour request payload from peer %s (side: %d, level: %d)",
-                         peer, payload.side, payload.level)
+        self.logger.info("Peer %s received neighbour request payload from peer %s (side: %d, level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         payload.side, payload.level)
         if not self.routing_table:
             self.logger.warning("Routing table not initialized - not responding to neighbour request")
             return
@@ -160,7 +175,9 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(NeighbourResponsePayload)
     def on_neighbour_response(self, peer: Peer, payload: NeighbourResponsePayload):
-        self.logger.info("Received neighbour response payload from peer %s (found? %s)", peer, bool(payload.found))
+        self.logger.info("Peer %s received neighbour response payload from peer %s (found? %s, key: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), bool(payload.found),
+                         payload.neighbour.key)
 
         if not self.request_cache.has("neighbour", payload.identifier):
             self.logger.warning("neighbour cache with id %s not found", payload.identifier)
@@ -169,21 +186,23 @@ class SkipGraphCommunity(Community):
         cache = self.request_cache.pop("neighbour", payload.identifier)
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
-    async def search(self, introducer_peer: Optional[Peer] = None, other_max_lvl: Optional[int] = None) -> SGNode:
+    async def search(self, key: int, introducer_peer: Optional[Peer] = None, other_max_lvl: Optional[int] = None) -> SGNode:
         cache = SearchRequestCache(self)
         self.request_cache.add(cache)
         if introducer_peer:
-            self.ez_send(introducer_peer, SearchPayload(cache.number, self.my_estimated_wan,
-                                                        self.routing_table.key, max(other_max_lvl - 1, 0)))
+            self.ez_send(introducer_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
+                                                        key, max(other_max_lvl - 1, 0)))
         else:
-            # TODO this is general search - to be implemented
+            self.ez_send(self.my_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
+                                                     key, self.routing_table.height() - 1))
             pass
 
         response = await cache.future
         return response
 
     async def get_link(self, peer: Peer, side: Direction, level: int):
-        self.logger.info("Sending get link message to peer %s (side: %d, level: %d)", peer, side, level)
+        self.logger.info("Peer %s sending get link message to peer %s (side: %d, level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), side, level)
 
         cache = LinkRequestCache(self)
         self.request_cache.add(cache)
@@ -207,14 +226,16 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(GetLinkPayload)
     def on_get_link(self, peer: Peer, payload: GetLinkPayload):
-        self.logger.info("Received get link message from peer %s (side: %d, level: %d)",
-                         peer, payload.side, payload.level)
+        self.logger.info("Peer %s received get link message from peer %s (side: %d, level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         payload.side, payload.level)
 
         self.change_neighbour(payload.identifier, SGNode.from_payload(payload.originator), payload.side, payload.level)
 
     @lazy_wrapper(SetLinkPayload)
     def on_set_link(self, peer: Peer, payload: SetLinkPayload):
-        self.logger.info("Received set link response payload from peer %s", peer)
+        self.logger.info("Received set link response payload from peer %s",
+                         self.get_short_id(peer.public_key.key_to_bin()))
         cache = None
 
         if self.request_cache.has("link", payload.identifier):
@@ -297,10 +318,14 @@ class SkipGraphCommunity(Community):
             other_side = RIGHT
 
         max_level = await self.get_max_level(introducer_peer)
-        other_side_neighbour = await self.search(introducer_peer=introducer_peer, other_max_lvl=max_level)
+        other_side_neighbour = await self.search(self.routing_table.key,
+                                                 introducer_peer=introducer_peer, other_max_lvl=max_level)
         if other_side_neighbour.key == self.routing_table.key:
             self.logger.warning("Node with key %d is already registered in the Skip Graph!", other_side_neighbour.key)
             return
+
+        self.logger.info("Peer %s established other side neighbour with key %s during join!",
+                         self.get_my_short_id(), other_side_neighbour.key)
 
         found, side_neighbour = await self.get_neighbour(other_side_neighbour.get_peer(), side, 0)
         new_neighbour = await self.get_link(other_side_neighbour.get_peer(), side, 0)
@@ -342,6 +367,7 @@ class SkipGraphCommunity(Community):
                 break
 
         self.routing_table.max_level = level
+        self.logger.info("Peer %s has joined the Skip Graph!", self.get_my_short_id())
 
     def create_introduction_request(self, socket_address, extra_bytes=b'', new_style=False, prefix=None):
         extra_payload = SGNode(self.my_estimated_wan, self.my_peer.public_key.key_to_bin(),

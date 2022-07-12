@@ -12,7 +12,7 @@ class NodeInfoPayload(VariablePayload):
 class SearchPayload(VariablePayload):
     msg_id = 2
     names = ['identifier', 'originator', 'search_key', 'level']
-    format_list = ['I', 'ip_address', 'I', 'I']
+    format_list = ['I', NodeInfoPayload, 'I', 'I']
 
 
 @vp_compile
