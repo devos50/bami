@@ -120,8 +120,10 @@ class BamiSimulation:
 
     async def run(self) -> None:
         self.setup_directories()
+        start_time = time.time()
         await self.start_ipv8_nodes()
         self.ipv8_discover_peers()
         await self.on_ipv8_ready()
+        print("Simulation setup took %f seconds" % (time.time() - start_time))
         await self.start_simulation()
         self.on_simulation_finished()
