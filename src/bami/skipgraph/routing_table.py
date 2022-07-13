@@ -27,29 +27,6 @@ class RoutingTable:
         """
         return len(self.levels)
 
-    def size_per_level(self) -> [int]:
-        sizes = []
-        for i in range(self.height()):
-            s = 0
-            if self.levels[i].neighbors[LEFT]:
-                s += 1
-            if self.levels[i].neighbors[RIGHT]:
-                s += 1
-            sizes.append(s)
-        return sizes
-
-    def num_unique_nodes(self) -> int:
-        """
-        Return the number of unique nodes in the total routing table, excluding yourself.
-        """
-        nodes = set()
-        for t in self.levels:
-            if t.neighbors[LEFT]:
-                nodes |= t.neighbors[LEFT]
-            if t.neighbors[RIGHT]:
-                nodes |= t.neighbors[RIGHT]
-        return len(nodes)
-
     def __str__(self) -> str:
         if not self.levels:
             return "<empty routing table>"

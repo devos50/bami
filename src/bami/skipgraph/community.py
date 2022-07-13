@@ -75,27 +75,39 @@ class SkipGraphCommunity(Community):
             while level >= 0:
                 neighbour = self.routing_table.levels[level].neighbors[RIGHT]
                 if neighbour and neighbour.key <= payload.search_key:
-                    self.ez_send(neighbour.get_peer(), SearchPayload(payload.identifier, payload.originator,
-                                                                     payload.search_key, level))
-                    break
+                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key, level)
+                    self.ez_send(neighbour.get_peer(), response_payload)
+                    return
                 else:
                     level -= 1
+
+            # We exhausted our search to the right - return ourselves as result to the search originator
+            self.logger.debug("Peer %s exhausted search to the right - returning self as search result",
+                              self.get_my_short_id())
+            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload())
+            self.ez_send(originator_node.get_peer(), response_payload)
         else:
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
                 neighbour = self.routing_table.levels[level].neighbors[LEFT]
                 if neighbour and neighbour.key >= payload.search_key:
-                    self.ez_send(neighbour.get_peer(), SearchPayload(payload.identifier, payload.originator,
-                                                                     payload.search_key, level))
-                    break
+                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key, level)
+                    self.ez_send(neighbour.get_peer(), response_payload)
+                    return
                 else:
                     level -= 1
 
-        # We exhausted our search - return ourselves as result to the search originator
-        if level < 0:
-            self.logger.debug("Peer %s exhausted search - returning self as search result", self.get_my_short_id())
-            self.ez_send(originator_node.get_peer(),
-                         SearchResponsePayload(payload.identifier, self.get_my_node().to_payload()))
+            # Search on the left level exhausted - return the left neighbour at level 0
+            left_neighbour = self.routing_table.levels[0].neighbors[LEFT]
+            if left_neighbour:
+                self.logger.debug("Peer %s exhausted search - returning left neighbour as search result",
+                                  self.get_my_short_id())
+                response_payload = SearchResponsePayload(payload.identifier, left_neighbour.to_payload())
+                self.ez_send(originator_node.get_peer(), response_payload)
+            else:
+                # We also don't have a left neighbour - return ourselves as last resort
+                response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload())
+                self.ez_send(originator_node.get_peer(), response_payload)
 
     @lazy_wrapper(SearchResponsePayload)
     def on_search_response(self, peer: Peer, payload: SearchResponsePayload):
@@ -193,6 +205,7 @@ class SkipGraphCommunity(Community):
             self.ez_send(introducer_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
                                                         key, max(other_max_lvl - 1, 0)))
         else:
+            # This is a regular search. Send a Search message to yourself to initiate the search.
             self.ez_send(self.my_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
                                                      key, self.routing_table.height() - 1))
             pass
@@ -222,7 +235,6 @@ class SkipGraphCommunity(Community):
             self.ez_send(node.get_peer(), SetLinkPayload(identifier, self.get_my_node().to_payload(), level))
 
         self.routing_table.levels[level].neighbors[side] = node
-        self.logger.error("RT of peer %s after CN:\n%s", self.get_my_short_id(), self.routing_table)
 
     @lazy_wrapper(GetLinkPayload)
     def on_get_link(self, peer: Peer, payload: GetLinkPayload):
@@ -336,7 +348,6 @@ class SkipGraphCommunity(Community):
 
         # Now that we have set the neighbours in lvl 0, we continue and set the neighbours in higher levels.
         self.logger.info("Joining phase 2")
-        self.logger.error("RT of this peer after phase 1:\n%s", self.routing_table)
         level = 0
         while True:
             level += 1
@@ -349,7 +360,6 @@ class SkipGraphCommunity(Community):
                 neighbour = await self.do_buddy_request(peer, self.get_my_node(), level - 1,
                                                         self.routing_table.mv.val[level - 1], LEFT)
                 self.routing_table.levels[level].neighbors[RIGHT] = neighbour
-                self.logger.error("Peer %s setting R: %s", self.get_my_short_id(), neighbour)
             else:
                 self.routing_table.levels[level].neighbors[RIGHT] = None
 
@@ -358,7 +368,6 @@ class SkipGraphCommunity(Community):
                 neighbour = await self.do_buddy_request(peer, self.get_my_node(), level - 1,
                                                         self.routing_table.mv.val[level - 1], RIGHT)
                 self.routing_table.levels[level].neighbors[LEFT] = neighbour
-                self.logger.error("Peer %s setting L: %s", self.get_my_short_id(), neighbour)
             else:
                 self.routing_table.levels[level].neighbors[LEFT] = None
 

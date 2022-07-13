@@ -1,3 +1,5 @@
+from asyncio import ensure_future, sleep
+
 from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 from bami.skipgraph.membership_vector import MembershipVector
@@ -95,31 +97,7 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
 
         self.initialize_routing_tables(nodes_info)
 
-    def assert_not_self_in_rt(self):
-        """
-        Make sure that we don't add ourselves to the routing tables.
-        """
-        for node in self.nodes:
-            for level in node.overlay.routing_table.levels:
-                assert not level.neighbors[LEFT] or level.neighbors[LEFT].key != node.overlay.routing_table.key
-                assert not level.neighbors[RIGHT] or level.neighbors[RIGHT].key != node.overlay.routing_table.key
-
-    async def test_join(self):
-        """
-        Test the graph example from the original Skip Graphs paper (page 8):
-        https://www.researchgate.net/profile/Gauri-Shah-4/publication/1956507_Skip_Graphs/links/576a91a208aef2a864d1dcd4/Skip-Graphs.pdf
-        """
-        await self.introduce_nodes()
-
-        for node in self.nodes[1:]:
-            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
-            self.assert_not_self_in_rt()
-
-        for ind, node in enumerate(self.nodes):
-            node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
-
-        # Verify the Skip Graph
-
+    def verify_skip_graph(self):
         # Level 0
         assert not self.nodes[0].overlay.routing_table.levels[0].neighbors[LEFT]
         assert self.nodes[0].overlay.routing_table.levels[0].neighbors[RIGHT].key == 21
@@ -185,3 +163,68 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
 
         assert self.nodes[6].overlay.routing_table.levels[2].neighbors[LEFT].key == 75
         assert not self.nodes[6].overlay.routing_table.levels[2].neighbors[RIGHT]
+
+    def assert_not_self_in_rt(self):
+        """
+        Make sure that we don't add ourselves to the routing tables.
+        """
+        for node in self.nodes:
+            for level in node.overlay.routing_table.levels:
+                assert not level.neighbors[LEFT] or level.neighbors[LEFT].key != node.overlay.routing_table.key
+                assert not level.neighbors[RIGHT] or level.neighbors[RIGHT].key != node.overlay.routing_table.key
+
+    async def test_join(self):
+        """
+        Test the graph example from the original Skip Graphs paper (page 8):
+        https://www.researchgate.net/profile/Gauri-Shah-4/publication/1956507_Skip_Graphs/links/576a91a208aef2a864d1dcd4/Skip-Graphs.pdf
+        """
+        await self.introduce_nodes()
+
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+            self.assert_not_self_in_rt()
+
+        for ind, node in enumerate(self.nodes):
+            node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
+
+        # Verify the Skip Graph
+        self.verify_skip_graph()
+
+    async def test_concurrent_join(self):
+        await self.introduce_nodes()
+        ensure_future(self.nodes[1].overlay.join(introducer_peer=self.nodes[0].my_peer))
+        ensure_future(self.nodes[6].overlay.join(introducer_peer=self.nodes[0].my_peer))
+
+        await self.deliver_messages()
+        self.assert_not_self_in_rt()
+
+        for ind, node in enumerate(self.nodes):
+            node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
+
+        self.verify_skip_graph()
+
+    async def test_search(self):
+        """
+        Test searching for particular nodes
+        """
+        await self.introduce_nodes()
+
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+
+        # Do some searches
+        for node in self.nodes:
+            result = await node.overlay.search(20)
+            assert result.key == 13  # Node 13 is the greatest number closest to 20, our search.
+
+            result = await self.nodes[0].overlay.search(13)
+            assert result.key == 13
+
+            result = await self.nodes[0].overlay.search(22)
+            assert result.key == 21
+
+            result = await self.nodes[0].overlay.search(100)
+            assert result.key == 99
+
+            result = await self.nodes[1].overlay.search(40)
+            assert result.key == 36
