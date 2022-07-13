@@ -1,5 +1,8 @@
+import random
 from asyncio import ensure_future, get_event_loop, sleep
 
+from bami.skipgraph import LEFT, RIGHT
+from bami.skipgraph.membership_vector import MembershipVector
 from ipv8.configuration import ConfigBuilder
 
 from simulations.settings import SimulationSettings
@@ -15,10 +18,9 @@ class BasicSkipgraphSimulation(BamiSimulation):
 
     def ipv8_discover_peers(self) -> None:
         """
-        Introduce every peer to node 0.
+        Ignore peer discovery. We don't use IPv8 peers.
         """
-        for node in self.nodes[1:]:
-            self.nodes[0].overlay.walk_to(node.endpoint.wan_address)
+        pass
 
     async def start_ipv8_nodes(self) -> None:
         await super().start_ipv8_nodes()
@@ -28,22 +30,70 @@ class BasicSkipgraphSimulation(BamiSimulation):
             node.overlay.initialize_routing_table(ind)
 
     async def on_ipv8_ready(self) -> None:
-        await sleep(10)  # Make sure peers have discovered each other
-        for ind, node in enumerate(self.nodes[1:]):
-            await node.overlay.join(introducer_peer=self.nodes[0].overlay.my_peer)
+        await sleep(5)  # Make sure peers have discovered each other
+
+        # Nodes are now joining the Skip Graph.
+        # For better performance and load balancing, we keep track of the nodes that have already joined, and the
+        # nodes that still need to join. We choose a random node that already joined as introducer peer.
+        node_ids_that_joined = [0]
+
+        node_ids = list(range(1, len(self.nodes)))
+        #random.shuffle(node_ids)
+        for ind in node_ids:
+            introducer_id = random.choice(node_ids_that_joined)
+            # Make sure this node knows about the introducer peer
+            print("Node %d will join the Skip Graph using introducer peer %d" % (ind, introducer_id))
+            self.nodes[ind].overlay.peers_info[self.nodes[introducer_id].overlay.my_peer] = self.nodes[introducer_id].overlay.get_my_node()
+            await self.nodes[ind].overlay.join(introducer_peer=self.nodes[introducer_id].overlay.my_peer)
+            node_ids_that_joined.append(ind)
             print("Node %d joined the Skip Graph..." % ind)
 
-        tot_traffic = 0
-        for node in self.nodes:
-            #print(node.overlays[0].routing_table)
-            tot_traffic += node.endpoint.bytes_up
+        # Verify the integrity of the Skip Graph
+        if not self.verify_skip_graph_integrity():
+            print("Skip Graph not valid!!")
+            for ind, node in enumerate(self.nodes):
+                print("=== node %d ===\n%s" % (ind, node.overlays[0].routing_table))
+            exit(1)
+        else:
+            print("Skip Graph valid!")
 
-        print(tot_traffic)
+    def verify_skip_graph_integrity(self) -> bool:
+        """
+        Verify the integrity of the Skip Graph by iterating through each level and verify the links.
+        """
+        keys_to_nodes = {}
+        for node in self.nodes:
+            keys_to_nodes[node.overlay.routing_table.key] = node
+
+        for level in range(MembershipVector.LENGTH + 1):
+            for node in self.nodes:
+                left_neighbour = node.overlay.routing_table.get(level, LEFT)
+                if left_neighbour:
+                    n = keys_to_nodes[left_neighbour.key]
+                    rn = n.overlay.routing_table.get(level, RIGHT)
+                    if not rn:
+                        print("Right neighbour of node with key %d on level %d not set while it should be" % (rn.key, level))
+                        return False
+                    if rn.key != node.overlay.routing_table.key:
+                        print("Right neighbour of node on level %d with key %d not as it should be (%d)" % (level, rn.key, left_neighbour.key))
+                        return False
+
+                right_neighbour = node.overlay.routing_table.get(level, RIGHT)
+                if right_neighbour:
+                    n = keys_to_nodes[right_neighbour.key]
+                    ln = n.overlay.routing_table.get(level, LEFT)
+                    if not ln:
+                        print("Left neighbour of node on with key %d level %d not set while it should be" % (ln.key, level))
+                        return False
+                    if ln.key != node.overlay.routing_table.key:
+                        print("Left neighbour of node on level %d with key %d not as it should be (%d)" % (level, ln.key, right_neighbour.key))
+                        return False
+        return True
 
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.peers = 600
+    settings.peers = 100
     settings.duration = 20
     simulation = BasicSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"

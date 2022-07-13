@@ -53,7 +53,6 @@ class BamiSimulation:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
             config = self.get_ipv8_builder(peer_id)
-            config.set_log_level("ERROR")
             instance = IPv8(config.finalize(), endpoint_override=endpoint,
                             extra_communities={'BasaltCommunity': BasaltCommunity,
                                                'SkipGraphCommunity': SkipGraphCommunity})
