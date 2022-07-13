@@ -3,10 +3,13 @@ import os
 import random
 import shutil
 import time
+from typing import Optional
 
 import yappi
 
 from bami.basalt.community import BasaltCommunity
+from bami.skipgraph.community import SkipGraphCommunity
+
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
 
@@ -29,6 +32,7 @@ class BamiSimulation:
     Each experiment will write data to a subdirectory in the data directory. The name of this subdirectory depends
     on the simulation settings.
     """
+    MAIN_OVERLAY: Optional[str] = None
 
     def __init__(self, settings: SimulationSettings) -> None:
         self.settings = settings
@@ -48,9 +52,25 @@ class BamiSimulation:
             if peer_id % 100 == 0:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
-            instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
-                            extra_communities={'BasaltCommunity': BasaltCommunity})
+            config = self.get_ipv8_builder(peer_id)
+            config.set_log_level("ERROR")
+            instance = IPv8(config.finalize(), endpoint_override=endpoint,
+                            extra_communities={'BasaltCommunity': BasaltCommunity,
+                                               'SkipGraphCommunity': SkipGraphCommunity})
             await instance.start()
+
+            # Set the WAN address of the peer to the address of the endpoint
+            instance.overlays[0].max_peers = -1
+            instance.overlays[0].my_peer.address = instance.overlays[0].endpoint.wan_address
+            instance.overlays[0].my_estimated_wan = instance.overlays[0].endpoint.wan_address
+
+            # If we have a main overlay set, find it and assign it to the overlay attribute
+            if self.MAIN_OVERLAY:
+                for overlay in instance.overlays:
+                    if overlay.__class__.__name__ == self.MAIN_OVERLAY:
+                        instance.overlay = overlay
+                        break
+
             self.nodes.append(instance)
 
     def setup_directories(self) -> None:
@@ -65,7 +85,7 @@ class BamiSimulation:
                 if node_a == node_b:
                     continue
 
-                node_a.overlays[0].walk_to(node_b.endpoint.wan_address)
+                node_a.overlay.walk_to(node_b.endpoint.wan_address)
         print("IPv8 peer discovery complete")
 
     async def start_simulation(self) -> None:
@@ -86,7 +106,7 @@ class BamiSimulation:
 
         self.loop.stop()
 
-    def on_ipv8_ready(self) -> None:
+    async def on_ipv8_ready(self) -> None:
         """
         This method is called when IPv8 is started and peer discovery is finished.
         """
@@ -102,6 +122,6 @@ class BamiSimulation:
         self.setup_directories()
         await self.start_ipv8_nodes()
         self.ipv8_discover_peers()
-        self.on_ipv8_ready()
+        await self.on_ipv8_ready()
         await self.start_simulation()
         self.on_simulation_finished()

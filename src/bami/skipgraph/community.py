@@ -50,8 +50,9 @@ class SkipGraphCommunity(Community):
         return hexlify(peer_pk).decode()[-8:]
 
     def initialize_routing_table(self, key: int, mv: Optional[MembershipVector] = None):
+        mv = mv or MembershipVector()
         self.logger.info("Node %s initializing routing table with key %d and MV %s", self.get_my_short_id(), key, mv)
-        self.routing_table = RoutingTable(key, mv or MembershipVector())
+        self.routing_table = RoutingTable(key, mv)
 
     def get_my_node(self) -> SGNode:
         my_pk = self.my_peer.public_key.key_to_bin()
