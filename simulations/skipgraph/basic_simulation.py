@@ -1,5 +1,5 @@
 import random
-from asyncio import ensure_future, get_event_loop, sleep
+from asyncio import ensure_future, sleep
 
 from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.membership_vector import MembershipVector
@@ -38,7 +38,6 @@ class BasicSkipgraphSimulation(BamiSimulation):
         node_ids_that_joined = [0]
 
         node_ids = list(range(1, len(self.nodes)))
-        #random.shuffle(node_ids)
         for ind in node_ids:
             introducer_id = random.choice(node_ids_that_joined)
             # Make sure this node knows about the introducer peer
@@ -93,8 +92,9 @@ class BasicSkipgraphSimulation(BamiSimulation):
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.peers = 100
+    settings.peers = 2000
     settings.duration = 20
+    settings.logging_level = "ERROR"
     simulation = BasicSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 
