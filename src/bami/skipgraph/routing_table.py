@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, List, Optional
 
-from bami.skipgraph import RIGHT, LEFT
+from bami.skipgraph import RIGHT, LEFT, Direction
 from bami.skipgraph.membership_vector import MembershipVector
 
 if TYPE_CHECKING:
@@ -16,10 +17,22 @@ class RoutingTable:
         self.mv: MembershipVector = mv
         self.max_level: int = 0
         self.levels: List[RoutingTableSingleLevel] = []
+        self.logger = logging.getLogger(__name__)
 
         # Initialize all levels
         for level in range(MembershipVector.LENGTH + 1):
             self.levels.append(RoutingTableSingleLevel(self.key, level))
+
+    def get(self, level: int, side: Direction) -> Optional[SGNode]:
+        if level >= len(self.levels):
+            return None
+
+        return self.levels[level].neighbors[side]
+
+    def set(self, level: int, side: Direction, node: Optional[SGNode]) -> None:
+        side_str = "left" if side == LEFT else "right"
+        self.logger.debug("Node with key %d setting %s neighbour to %s at level %d", self.key, side_str, node, level)
+        self.levels[level].neighbors[side] = node
 
     def height(self) -> int:
         """

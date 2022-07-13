@@ -73,7 +73,7 @@ class SkipGraphCommunity(Community):
         elif self.routing_table.key < payload.search_key:
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                neighbour = self.routing_table.levels[level].neighbors[RIGHT]
+                neighbour = self.routing_table.get(level, RIGHT)
                 if neighbour and neighbour.key <= payload.search_key:
                     response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key, level)
                     self.ez_send(neighbour.get_peer(), response_payload)
@@ -89,7 +89,7 @@ class SkipGraphCommunity(Community):
         else:
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                neighbour = self.routing_table.levels[level].neighbors[LEFT]
+                neighbour = self.routing_table.get(level, LEFT)
                 if neighbour and neighbour.key >= payload.search_key:
                     response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key, level)
                     self.ez_send(neighbour.get_peer(), response_payload)
@@ -98,7 +98,7 @@ class SkipGraphCommunity(Community):
                     level -= 1
 
             # Search on the left level exhausted - return the left neighbour at level 0
-            left_neighbour = self.routing_table.levels[0].neighbors[LEFT]
+            left_neighbour = self.routing_table.get(0, LEFT)
             if left_neighbour:
                 self.logger.debug("Peer %s exhausted search - returning left neighbour as search result",
                                   self.get_my_short_id())
@@ -178,7 +178,7 @@ class SkipGraphCommunity(Community):
             self.ez_send(peer, NeighbourResponsePayload(payload.identifier, False, SGNode.empty().to_payload()))
             return
 
-        neighbouring_node = self.routing_table.levels[payload.level].neighbors[payload.side]
+        neighbouring_node = self.routing_table.get(payload.level, payload.side)
         if neighbouring_node:
             self.ez_send(peer, NeighbourResponsePayload(payload.identifier, True, neighbouring_node.to_payload()))
             return
@@ -226,15 +226,17 @@ class SkipGraphCommunity(Community):
     def change_neighbour(self, identifier: int, node: SGNode, side: Direction, level: int):
         side_str = "left" if side == LEFT else "right"
         self.logger.info("Peer %s changing %s neighbour at level %d to %s", self.get_my_short_id(), side_str, level, node)
-        neighbour = self.routing_table.levels[level].neighbors[side]
+        neighbour = self.routing_table.get(level, side)
         if (side == RIGHT and neighbour is not None and neighbour.key < node.key) or \
                 (side == LEFT and neighbour is not None and neighbour.key > node.key):
-            to_peer = self.routing_table.levels[level].neighbors[side].get_peer()
-            self.ez_send(to_peer, GetLinkPayload(identifier, node.to_payload(), side, level))
+            self.ez_send(neighbour.get_peer(), GetLinkPayload(identifier, node.to_payload(), side, level))
         else:
             self.ez_send(node.get_peer(), SetLinkPayload(identifier, self.get_my_node().to_payload(), level))
 
-        self.routing_table.levels[level].neighbors[side] = node
+        # Only update the neighbour if it's not set or when it's "better" than the current neighbour
+        if not neighbour or (side == RIGHT and neighbour is not None and neighbour.key > node.key) or \
+            (side == LEFT and neighbour is not None and neighbour.key < node.key):
+            self.routing_table.set(level, side, node)
 
     @lazy_wrapper(GetLinkPayload)
     def on_get_link(self, peer: Peer, payload: GetLinkPayload):
@@ -288,8 +290,9 @@ class SkipGraphCommunity(Community):
         if self.routing_table.mv.val[level] == val:
             self.change_neighbour(payload.identifier, originator, side, level + 1)
         else:
-            if self.routing_table.levels[level].neighbors[other_side] is not None:
-                to_peer = self.routing_table.levels[level].neighbors[other_side].get_peer()
+            neighbour = self.routing_table.get(level, other_side)
+            if neighbour is not None:
+                to_peer = neighbour.get_peer()
                 self.logger.info("Peer %s forwarding buddy request to peer %s (val: %d, side: %d, level: %d)",
                                  self.get_my_short_id(), self.get_short_id(to_peer.public_key.key_to_bin()), val, side,
                                  level)
@@ -341,10 +344,10 @@ class SkipGraphCommunity(Community):
 
         found, side_neighbour = await self.get_neighbour(other_side_neighbour.get_peer(), side, 0)
         new_neighbour = await self.get_link(other_side_neighbour.get_peer(), side, 0)
-        self.routing_table.levels[0].neighbors[other_side] = new_neighbour
+        self.routing_table.set(0, other_side, new_neighbour)
         if found:
             new_neighbour = await self.get_link(side_neighbour.get_peer(), other_side, 0)
-            self.routing_table.levels[0].neighbors[side] = new_neighbour
+            self.routing_table.set(0, side, new_neighbour)
 
         # Now that we have set the neighbours in lvl 0, we continue and set the neighbours in higher levels.
         self.logger.info("Joining phase 2")
@@ -355,24 +358,23 @@ class SkipGraphCommunity(Community):
             if level > MembershipVector.LENGTH:
                 break
 
-            if self.routing_table.levels[level - 1].neighbors[RIGHT] is not None:
-                peer = self.routing_table.levels[level - 1].neighbors[RIGHT].get_peer()
+            if self.routing_table.get(level - 1, RIGHT) is not None:
+                peer = self.routing_table.get(level - 1, RIGHT).get_peer()
                 neighbour = await self.do_buddy_request(peer, self.get_my_node(), level - 1,
                                                         self.routing_table.mv.val[level - 1], LEFT)
-                self.routing_table.levels[level].neighbors[RIGHT] = neighbour
+                self.routing_table.set(level, RIGHT, neighbour)
             else:
-                self.routing_table.levels[level].neighbors[RIGHT] = None
+                self.routing_table.set(level, RIGHT, None)
 
-            if self.routing_table.levels[level - 1].neighbors[LEFT] is not None:
-                peer = self.routing_table.levels[level - 1].neighbors[LEFT].get_peer()
+            if self.routing_table.get(level - 1, LEFT) is not None:
+                peer = self.routing_table.get(level - 1, LEFT).get_peer()
                 neighbour = await self.do_buddy_request(peer, self.get_my_node(), level - 1,
                                                         self.routing_table.mv.val[level - 1], RIGHT)
-                self.routing_table.levels[level].neighbors[LEFT] = neighbour
+                self.routing_table.set(level, LEFT, neighbour)
             else:
-                self.routing_table.levels[level].neighbors[LEFT] = None
+                self.routing_table.set(level, LEFT, None)
 
-            if self.routing_table.levels[level].neighbors[RIGHT] is None and \
-                    self.routing_table.levels[level].neighbors[LEFT] is None:
+            if self.routing_table.get(level, RIGHT) is None and self.routing_table.get(level, LEFT) is None:
                 break
 
         self.routing_table.max_level = level
