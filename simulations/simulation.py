@@ -3,6 +3,7 @@ import os
 import random
 import shutil
 import time
+from asyncio import sleep
 from typing import Optional
 
 import yappi
@@ -63,6 +64,10 @@ class BamiSimulation:
 
             await instance.start()
 
+            if not self.settings.enable_ipv8_ticker:
+                # Disable the IPv8 ticker
+                instance.state_machine_task.cancel()
+
             # Set the WAN address of the peer to the address of the endpoint
             instance.overlays[0].max_peers = -1
             instance.overlays[0].my_peer.address = instance.overlays[0].endpoint.wan_address
@@ -86,7 +91,7 @@ class BamiSimulation:
             shutil.rmtree(self.data_dir)
         os.makedirs(self.data_dir, exist_ok=True)
 
-    def ipv8_discover_peers(self) -> None:
+    async def ipv8_discover_peers(self) -> None:
         for node_a in self.nodes:
             connect_nodes = random.sample(self.nodes, min(100, len(self.nodes)))
             for node_b in connect_nodes:
@@ -94,6 +99,9 @@ class BamiSimulation:
                     continue
 
                 node_a.overlay.walk_to(node_b.endpoint.wan_address)
+
+        await sleep(5)  # Make sure peers have discovered each other
+
         print("IPv8 peer discovery complete")
 
     async def start_simulation(self) -> None:
@@ -130,7 +138,7 @@ class BamiSimulation:
         self.setup_directories()
         start_time = time.time()
         await self.start_ipv8_nodes()
-        self.ipv8_discover_peers()
+        await self.ipv8_discover_peers()
         await self.on_ipv8_ready()
         print("Simulation setup took %f seconds" % (time.time() - start_time))
         await self.start_simulation()

@@ -23,20 +23,6 @@ class SearchResponsePayload(VariablePayload):
 
 
 @vp_compile
-class MaxLevelRequestPayload(VariablePayload):
-    msg_id = 4
-    names = ['identifier']
-    format_list = ['I']
-
-
-@vp_compile
-class MaxLevelResponsePayload(VariablePayload):
-    msg_id = 5
-    names = ['identifier', 'max_level']
-    format_list = ['I', 'I']
-
-
-@vp_compile
 class NeighbourRequestPayload(VariablePayload):
     msg_id = 6
     names = ['identifier', 'side', 'level']

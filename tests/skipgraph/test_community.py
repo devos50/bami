@@ -4,6 +4,7 @@ from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
+from bami.skipgraph.util import verify_skip_graph_integrity
 from ipv8.messaging.interfaces.udp.endpoint import UDPv4Address
 
 from ipv8.test.base import TestBase
@@ -33,6 +34,15 @@ class TestSkipGraphCommunityBase(TestBase):
     def create_node(self):
         return MockIPv8("curve25519", SkipGraphCommunity)
 
+    def assert_not_self_in_rt(self):
+        """
+        Make sure that we don't add ourselves to the routing tables.
+        """
+        for node in self.nodes:
+            for level in node.overlay.routing_table.levels:
+                assert not level.neighbors[LEFT] or level.neighbors[LEFT].key != node.overlay.routing_table.key
+                assert not level.neighbors[RIGHT] or level.neighbors[RIGHT].key != node.overlay.routing_table.key
+
 
 class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
 
@@ -40,14 +50,6 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
         await self.introduce_nodes()
         for node in self.nodes:
             assert node.overlay.peers_info
-
-    async def test_get_max_level(self):
-        max_level = await self.nodes[0].overlay.get_max_level(self.nodes[1].overlay.my_peer)
-        assert max_level == 0
-
-        self.nodes[1].overlay.routing_table.max_level = 3
-        max_level = await self.nodes[0].overlay.get_max_level(self.nodes[1].overlay.my_peer)
-        assert max_level == 3
 
     async def test_get_neighbour(self):
         found, node = await self.nodes[0].overlay.get_neighbour(self.nodes[1].overlay.my_peer, LEFT, 0)
@@ -76,6 +78,39 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
         assert result.key == 0
         result = await self.nodes[1].overlay.search(1)
         assert result.key == 1
+
+
+class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
+    NUM_NODES = 4
+
+    def setUp(self):
+        super(TestSkipGraphCommunityBase, self).setUp()
+        self.initialize(SkipGraphCommunity, self.NUM_NODES)
+
+        MembershipVector.LENGTH = 4
+        nodes_info = [
+            (99, [0, 0]),
+            (21, [1, 0]),
+            (33, [0, 1]),
+            (36, [1, 1])]
+
+        self.initialize_routing_tables(nodes_info)
+
+    async def test_join(self):
+        """
+        Test constructing a Skip Graph with four node.
+        """
+        await self.introduce_nodes()
+
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+            node.overlay.logger.warning("--- node with key %d joined ---", node.overlay.routing_table.key)
+            for ind, node in enumerate(self.nodes):
+                node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
+
+            if not verify_skip_graph_integrity(self.nodes):
+                assert False, "Skip graph invalid!"
+            self.assert_not_self_in_rt()
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
@@ -163,15 +198,6 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
 
         assert self.nodes[6].overlay.routing_table.get(2, LEFT).key == 75
         assert not self.nodes[6].overlay.routing_table.get(2, RIGHT)
-
-    def assert_not_self_in_rt(self):
-        """
-        Make sure that we don't add ourselves to the routing tables.
-        """
-        for node in self.nodes:
-            for level in node.overlay.routing_table.levels:
-                assert not level.neighbors[LEFT] or level.neighbors[LEFT].key != node.overlay.routing_table.key
-                assert not level.neighbors[RIGHT] or level.neighbors[RIGHT].key != node.overlay.routing_table.key
 
     async def test_join(self):
         """

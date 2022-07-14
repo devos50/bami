@@ -1,123 +1,50 @@
-import os
+"""
+This basic simulation has nodes join the
+"""
 import random
 from asyncio import ensure_future, sleep
 
-from bami.skipgraph import LEFT, RIGHT
-from bami.skipgraph.membership_vector import MembershipVector
-from ipv8.configuration import ConfigBuilder
-
 from simulations.settings import SimulationSettings
-from simulations.simulation import BamiSimulation
+from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
 
-class BasicSkipgraphSimulation(BamiSimulation):
-
-    def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
-        builder = super().get_ipv8_builder(peer_id)
-        builder.add_overlay("SkipGraphCommunity", "my peer", [], [], {}, [])
-        return builder
-
-    def ipv8_discover_peers(self) -> None:
-        """
-        Ignore peer discovery. We don't use IPv8 peers.
-        """
-        pass
-
-    async def start_ipv8_nodes(self) -> None:
-        await super().start_ipv8_nodes()
-
-        # Initialize the routing tables of each node after starting the IPv8 nodes.
-        for ind, node in enumerate(self.nodes):
-            node.overlay.initialize_routing_table(ind)
+class BasicSkipgraphSimulation(SkipgraphSimulation):
 
     async def on_ipv8_ready(self) -> None:
-        await sleep(5)  # Make sure peers have discovered each other
+        await super().on_ipv8_ready()
 
-        # Nodes are now joining the Skip Graph.
-        # For better performance and load balancing, we keep track of the nodes that have already joined, and the
-        # nodes that still need to join. We choose a random node that already joined as introducer peer.
-        node_ids_that_joined = [0]
+        async def do_search(delay, node, search_key):
+            await sleep(delay)
+            res = await node.overlay.search(search_key)
 
-        node_ids = list(range(1, len(self.nodes)))
-        for ind in node_ids:
-            introducer_id = random.choice(node_ids_that_joined)
-            # Make sure this node knows about the introducer peer
-            print("Node %d will join the Skip Graph using introducer peer %d" % (ind, introducer_id))
-            self.nodes[ind].overlay.peers_info[self.nodes[introducer_id].overlay.my_peer] = self.nodes[introducer_id].overlay.get_my_node()
-            await self.nodes[ind].overlay.join(introducer_peer=self.nodes[introducer_id].overlay.my_peer)
-            node_ids_that_joined.append(ind)
-            print("Node %d joined the Skip Graph..." % ind)
+            # Verify that this is the right search result
+            if res.key not in self.node_keys_sorted:
+                assert False, "We got a key result that is not registered in the Skip List!"
 
-        # Verify the integrity of the Skip Graph
-        if not self.verify_skip_graph_integrity():
-            print("Skip Graph not valid!!")
-            for ind, node in enumerate(self.nodes):
-                print("=== node %d ===\n%s" % (ind, node.overlays[0].routing_table))
-            exit(1)
-        else:
-            print("Skip Graph valid!")
+            if search_key < self.node_keys_sorted[0]:
+                assert res.key == self.node_keys_sorted[0]
+            else:
+                res_ind = self.node_keys_sorted.index(res.key)
+                if res_ind == len(self.node_keys_sorted) - 1:
+                    assert search_key > res_ind
+                else:
+                    assert res.key <= search_key and self.node_keys_sorted[res_ind + 1] > search_key, \
+                        "Result: %d search key: %d" % (res.key, search_key)
 
-    def verify_skip_graph_integrity(self) -> bool:
-        """
-        Verify the integrity of the Skip Graph by iterating through each level and verify the links.
-        """
-        keys_to_nodes = {}
-        for node in self.nodes:
-            keys_to_nodes[node.overlay.routing_table.key] = node
-
-        for level in range(MembershipVector.LENGTH + 1):
-            for node in self.nodes:
-                left_neighbour = node.overlay.routing_table.get(level, LEFT)
-                if left_neighbour:
-                    n = keys_to_nodes[left_neighbour.key]
-                    rn = n.overlay.routing_table.get(level, RIGHT)
-                    if not rn:
-                        print("Right neighbour of node with key %d on level %d not set while it should be" % (rn.key, level))
-                        return False
-                    if rn.key != node.overlay.routing_table.key:
-                        print("Right neighbour of node on level %d with key %d not as it should be (%d)" % (level, rn.key, left_neighbour.key))
-                        return False
-
-                right_neighbour = node.overlay.routing_table.get(level, RIGHT)
-                if right_neighbour:
-                    n = keys_to_nodes[right_neighbour.key]
-                    ln = n.overlay.routing_table.get(level, LEFT)
-                    if not ln:
-                        print("Left neighbour of node on with key %d level %d not set while it should be" % (ln.key, level))
-                        return False
-                    if ln.key != node.overlay.routing_table.key:
-                        print("Left neighbour of node on level %d with key %d not as it should be (%d)" % (level, ln.key, right_neighbour.key))
-                        return False
-        return True
-
-    def on_simulation_finished(self):
-        """
-        The experiment is finished. Write the results away.
-        """
-
-        # Bandwidth statistics
-        with open(os.path.join("data", "bw_usage.csv"), "w") as bw_file:
-            bw_file.write("peer,bytes_up,bytes_down\n")
-            for ind, node in enumerate(self.nodes):
-                bw_file.write("%d,%d,%d\n" % (ind, node.overlay.endpoint.bytes_up, node.overlay.endpoint.bytes_down))
-
-        # Message statistics
-        if self.settings.enable_community_statistics:
-            with open(os.path.join("data", "msg_statistics.csv"), "w") as msg_stats_file:
-                msg_stats_file.write("peer,msg_id,num_up,num_down,bytes_up,bytes_down\n")
-                for ind, node in enumerate(self.nodes):
-                    for msg_id, network_stats in node.endpoint.statistics[node.overlay.get_prefix()].items():
-                        msg_stats_file.write("%d,%d,%d,%d,%d,%d\n" % (ind, msg_id, network_stats.num_up,
-                                                                      network_stats.num_down, network_stats.bytes_up,
-                                                                      network_stats.bytes_down))
+        # Schedule some searches
+        for _ in range(100):
+            random_node = random.choice(self.nodes)
+            ensure_future(do_search(random.random() * 20, random_node, random.randint(0, 2 ** 32)))
 
 
 if __name__ == "__main__":
     settings = SimulationSettings()
     settings.peers = 100
-    settings.duration = 20
+    settings.duration = 30
     settings.logging_level = "ERROR"
+    settings.profile = True
     settings.enable_community_statistics = True
+    settings.enable_ipv8_ticker = False
     simulation = BasicSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 

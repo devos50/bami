@@ -3,12 +3,11 @@ from binascii import unhexlify, hexlify
 from typing import Optional, Dict
 
 from bami.skipgraph import RIGHT, LEFT, Direction
-from bami.skipgraph.cache import MaxLevelRequestCache, SearchRequestCache, NeighbourRequestCache, LinkRequestCache, \
-    BuddyCache
+from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
-from bami.skipgraph.payload import SearchPayload, SearchResponsePayload, NodeInfoPayload, MaxLevelRequestPayload, \
-    MaxLevelResponsePayload, NeighbourRequestPayload, NeighbourResponsePayload, GetLinkPayload, SetLinkPayload, \
+from bami.skipgraph.payload import SearchPayload, SearchResponsePayload, NodeInfoPayload, NeighbourRequestPayload, \
+    NeighbourResponsePayload, GetLinkPayload, SetLinkPayload, \
     BuddyPayload
 from bami.skipgraph.routing_table import RoutingTable
 from ipv8.community import Community
@@ -33,8 +32,6 @@ class SkipGraphCommunity(Community):
 
         self.add_message_handler(SearchPayload.msg_id, self.on_search_request)
         self.add_message_handler(SearchResponsePayload, self.on_search_response)
-        self.add_message_handler(MaxLevelRequestPayload, self.on_max_level_request)
-        self.add_message_handler(MaxLevelResponsePayload, self.on_max_level_response)
         self.add_message_handler(NeighbourRequestPayload, self.on_neighbour_request)
         self.add_message_handler(NeighbourResponsePayload, self.on_neighbour_response)
         self.add_message_handler(GetLinkPayload, self.on_get_link)
@@ -112,7 +109,7 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(SearchResponsePayload)
     def on_search_response(self, peer: Peer, payload: SearchResponsePayload):
-        self.logger.info("Peer %s received search response from peer %s (key: %d)",
+        self.logger.info("Peer %s received search response from peer %s (resulting key: %d)",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.response.key)
 
         if not self.request_cache.has("search", payload.identifier):
@@ -122,35 +119,6 @@ class SkipGraphCommunity(Community):
         cache = self.request_cache.pop("search", payload.identifier)
         node = SGNode.from_payload(payload.response)
         cache.future.set_result(node)
-
-    async def get_max_level(self, peer: Peer) -> Optional[int]:
-        """
-        Request the maximum level in the Skip Graph of a target peer.
-        """
-        cache = MaxLevelRequestCache(self)
-        self.request_cache.add(cache)
-        self.ez_send(peer, MaxLevelRequestPayload(cache.number))
-        max_level = await cache.future
-        return max_level
-
-    @lazy_wrapper(MaxLevelRequestPayload)
-    def on_max_level_request(self, peer: Peer, payload: MaxLevelRequestPayload):
-        self.logger.info("Received max level request payload from peer %s", peer)
-        if not self.routing_table:
-            self.logger.warning("Routing table not initialized - not responding to max level request")
-            return
-
-        self.ez_send(peer, MaxLevelResponsePayload(payload.identifier, self.routing_table.max_level))
-
-    @lazy_wrapper(MaxLevelResponsePayload)
-    def on_max_level_response(self, peer: Peer, payload: MaxLevelResponsePayload):
-        self.logger.info("Received max level response payload from peer %s (max lvl: %d)", peer, payload.max_level)
-        if not self.request_cache.has("max-level", payload.identifier):
-            self.logger.warning("max level cache with id %s not found", payload.identifier)
-            return
-
-        cache = self.request_cache.pop("max-level", payload.identifier)
-        cache.future.set_result(payload.max_level)
 
     async def get_neighbour(self, peer: Peer, side: Direction, level: int) -> Optional[SGNode]:
         """
@@ -199,12 +167,12 @@ class SkipGraphCommunity(Community):
         cache = self.request_cache.pop("neighbour", payload.identifier)
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
-    async def search(self, key: int, introducer_peer: Optional[Peer] = None, other_max_lvl: Optional[int] = None) -> SGNode:
+    async def search(self, key: int, introducer_peer: Optional[Peer] = None) -> SGNode:
         cache = SearchRequestCache(self)
         self.request_cache.add(cache)
         if introducer_peer:
             self.ez_send(introducer_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
-                                                        key, max(other_max_lvl - 1, 0)))
+                                                        key, self.routing_table.height() - 1))
         else:
             # This is a regular search. Send a Search message to yourself to initiate the search.
             self.ez_send(self.my_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
@@ -326,29 +294,33 @@ class SkipGraphCommunity(Community):
                           self.get_my_short_id(), self.get_short_id(introducer_peer.public_key.key_to_bin()),
                           introducer_peer_info.key, introducer_peer_info.mv)
 
-        if introducer_peer_info.key < self.routing_table.key:
-            side = RIGHT
-            other_side = LEFT
-        else:
-            side = LEFT
-            other_side = RIGHT
-
-        max_level = await self.get_max_level(introducer_peer)
-        other_side_neighbour = await self.search(self.routing_table.key,
-                                                 introducer_peer=introducer_peer, other_max_lvl=max_level)
-        if other_side_neighbour.key == self.routing_table.key:
-            self.logger.warning("Node with key %d is already registered in the Skip Graph!", other_side_neighbour.key)
+        closest_neighbour = await self.search(self.routing_table.key, introducer_peer=introducer_peer)
+        if closest_neighbour.key == self.routing_table.key:
+            self.logger.warning("Node with key %d is already registered in the Skip Graph!", closest_neighbour.key)
             return
 
-        self.logger.info("Peer %s established other side neighbour with key %s during join!",
-                         self.get_my_short_id(), other_side_neighbour.key)
+        self.logger.info("Peer %s established closest neighbour with key %s during join!",
+                         self.get_my_short_id(), closest_neighbour.key)
 
-        found, side_neighbour = await self.get_neighbour(other_side_neighbour.get_peer(), side, 0)
-        new_neighbour = await self.get_link(other_side_neighbour.get_peer(), side, 0)
-        self.routing_table.set(0, other_side, new_neighbour)
-        if found:
-            new_neighbour = await self.get_link(side_neighbour.get_peer(), other_side, 0)
-            self.routing_table.set(0, side, new_neighbour)
+        # There are two possibilities. The closest neighbour has a key that is the greatest key smaller than ours.
+        # Or we have the smallest key in the network.
+        if closest_neighbour.key < self.routing_table.key:
+            # We have to insert ourselves between the closest neighbour and the right neighbour of this closest
+            # neighbour.
+            found, closest_neighbour_right = await self.get_neighbour(closest_neighbour.get_peer(), RIGHT, 0)
+
+            # Change the left neighbour of the right neighbour
+            if found:
+                new_neighbour = await self.get_link(closest_neighbour_right.get_peer(), LEFT, 0)
+                self.routing_table.set(0, RIGHT, closest_neighbour_right)
+
+            # Change the right neighbour of the left neighbour to point to ourselves
+            new_neighbour = await self.get_link(closest_neighbour.get_peer(), RIGHT, 0)
+            self.routing_table.set(0, LEFT, closest_neighbour)
+        else:
+            # We have the smallest key in the network. Simply update the left neighbour of the closest neighbour.
+            new_neighbour = await self.get_link(closest_neighbour.get_peer(), LEFT, 0)
+            self.routing_table.set(0, RIGHT, closest_neighbour)
 
         # Now that we have set the neighbours in lvl 0, we continue and set the neighbours in higher levels.
         self.logger.info("Joining phase 2")
