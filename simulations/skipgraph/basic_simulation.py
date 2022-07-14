@@ -20,6 +20,7 @@ class BasicSkipgraphSimulation(SkipgraphSimulation):
         # Reset all search hops statistics (since introduction will also conduct a search)
         for node in self.nodes:
             node.overlay.search_hops = {}
+            node.overlay.search_latencies = []
 
         async def do_search(delay, node, search_key):
             await sleep(delay)
@@ -44,7 +45,7 @@ class BasicSkipgraphSimulation(SkipgraphSimulation):
                 print("Completed %d searches..." % self.searches_done)
 
         # Schedule some searches
-        for _ in range(5000):
+        for _ in range(100):
             random_node = random.choice(self.nodes)
             ensure_future(do_search(random.random() * 20, random_node, random.randint(0, 2 ** 32)))
 
@@ -57,6 +58,7 @@ if __name__ == "__main__":
     settings.profile = True
     settings.enable_community_statistics = True
     settings.enable_ipv8_ticker = False
+    settings.latencies_file = "data/latencies.txt"
     simulation = BasicSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 

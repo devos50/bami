@@ -1,6 +1,7 @@
 import random
+from asyncio import get_event_loop
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from bami.skipgraph import RIGHT, LEFT, Direction
 from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache
@@ -39,6 +40,7 @@ class SkipGraphCommunity(Community):
         self.add_message_handler(BuddyPayload, self.on_buddy)
 
         self.search_hops: Dict[int, int] = {}  # Keep track of the number of hops per search
+        self.search_latencies: List[int] = []  # Keep track of the latency of individual searches
 
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
 
@@ -122,11 +124,13 @@ class SkipGraphCommunity(Community):
             self.logger.warning("search cache with id %s not found", payload.identifier)
             return
 
+        cache = self.request_cache.pop("search", payload.identifier)
+
         if payload.hops not in self.search_hops:
             self.search_hops[payload.hops] = 0
         self.search_hops[payload.hops] += 1
+        self.search_latencies.append(get_event_loop().time() - cache.start_time)
 
-        cache = self.request_cache.pop("search", payload.identifier)
         node = SGNode.from_payload(payload.response)
         cache.future.set_result(node)
 

@@ -91,7 +91,7 @@ class SkipgraphSimulation(BamiSimulation):
                                                                       network_stats.num_down, network_stats.bytes_up,
                                                                       network_stats.bytes_down))
 
-        # Search statistics
+        # Search hops statistics
         hops_freq = {}
         for node in self.nodes:
             for num_hops, freq in node.overlay.search_hops.items():
@@ -103,3 +103,10 @@ class SkipgraphSimulation(BamiSimulation):
             search_hops_file.write("peers,hops,freq\n")
             for num_hops, freq in hops_freq.items():
                 search_hops_file.write("%d,%d,%d\n" % (self.settings.peers, num_hops, freq))
+
+        # Search latencies
+        with open(os.path.join(self.data_dir, "search_latencies.csv"), "w") as latencies_file:
+            latencies_file.write("peers,time\n")
+            for node in self.nodes:
+                for latency in node.overlay.search_latencies:
+                    latencies_file.write("%d,%f\n" % (self.settings.peers, latency))

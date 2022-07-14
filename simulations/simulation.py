@@ -106,6 +106,30 @@ class BamiSimulation:
 
         print("IPv8 peer discovery complete")
 
+    def apply_latencies(self):
+        """
+        If specified in the settings, add latencies between the endpoints.
+        """
+        if not self.settings.latencies_file:
+            return
+
+        latencies = []
+        with open(self.settings.latencies_file) as latencies_file:
+            for line in latencies_file.readlines():
+                latencies.append([float(l) for l in line.strip().split(",")])
+
+        print("Read latency matrix with %d sites!" % len(latencies))
+
+        # Assign nodes to sites in a round-robin fashion and apply latencies accordingly
+        for from_ind, from_node in enumerate(self.nodes):
+            for to_ind, to_node in enumerate(self.nodes):
+                from_site_ind = from_ind % len(latencies)
+                to_site_ind = to_ind % len(latencies)
+                latency_ms = int(latencies[from_site_ind][to_site_ind]) / 1000
+                from_node.endpoint.latencies[to_node.endpoint.wan_address] = latency_ms
+
+        print("Latencies applied!")
+
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
 
@@ -141,6 +165,7 @@ class BamiSimulation:
         start_time = time.time()
         await self.start_ipv8_nodes()
         await self.ipv8_discover_peers()
+        self.apply_latencies()
         await self.on_ipv8_ready()
         print("Simulation setup took %f seconds" % (time.time() - start_time))
         await self.start_simulation()

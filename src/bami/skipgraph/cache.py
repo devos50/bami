@@ -1,4 +1,4 @@
-from asyncio import Future
+from asyncio import Future, get_event_loop
 
 from ipv8.requestcache import RandomNumberCache
 
@@ -29,3 +29,4 @@ class SearchRequestCache(RandomNumberCache):
     def __init__(self, community):
         super().__init__(community.request_cache, "search")
         self.future = Future()
+        self.start_time = get_event_loop().time()
