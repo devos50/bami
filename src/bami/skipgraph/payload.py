@@ -11,15 +11,15 @@ class NodeInfoPayload(VariablePayload):
 @vp_compile
 class SearchPayload(VariablePayload):
     msg_id = 2
-    names = ['identifier', 'originator', 'search_key', 'level']
-    format_list = ['I', NodeInfoPayload, 'I', 'I']
+    names = ['identifier', 'originator', 'search_key', 'level', 'hops']
+    format_list = ['I', NodeInfoPayload, 'I', 'I', 'I']
 
 
 @vp_compile
 class SearchResponsePayload(VariablePayload):
     msg_id = 3
-    names = ['identifier', 'response']
-    format_list = ['I', NodeInfoPayload]
+    names = ['identifier', 'response', 'hops']
+    format_list = ['I', NodeInfoPayload, 'I']
 
 
 @vp_compile

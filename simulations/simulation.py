@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import random
 import shutil
@@ -39,6 +40,7 @@ class BamiSimulation:
     def __init__(self, settings: SimulationSettings) -> None:
         self.settings = settings
         self.nodes = []
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.data_dir = os.path.join("data", "n_%d" % self.settings.peers)
 
         self.loop = DiscreteLoop()

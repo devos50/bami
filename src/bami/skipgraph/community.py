@@ -38,6 +38,8 @@ class SkipGraphCommunity(Community):
         self.add_message_handler(SetLinkPayload, self.on_set_link)
         self.add_message_handler(BuddyPayload, self.on_buddy)
 
+        self.search_hops: Dict[int, int] = {}  # Keep track of the number of hops per search
+
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
 
     def get_my_short_id(self) -> str:
@@ -65,7 +67,7 @@ class SkipGraphCommunity(Community):
 
         if self.routing_table.key == payload.search_key:
             # Send this nodes' info back to the search originator
-            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload())
+            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
             return
         elif self.routing_table.key < payload.search_key:
@@ -73,7 +75,8 @@ class SkipGraphCommunity(Community):
             while level >= 0:
                 neighbour = self.routing_table.get(level, RIGHT)
                 if neighbour and neighbour.key <= payload.search_key:
-                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key, level)
+                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
+                                                     level, payload.hops + 1)
                     self.ez_send(neighbour.get_peer(), response_payload)
                     return
                 else:
@@ -82,14 +85,15 @@ class SkipGraphCommunity(Community):
             # We exhausted our search to the right - return ourselves as result to the search originator
             self.logger.debug("Peer %s exhausted search to the right - returning self as search result",
                               self.get_my_short_id())
-            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload())
+            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
         else:
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
                 neighbour = self.routing_table.get(level, LEFT)
                 if neighbour and neighbour.key >= payload.search_key:
-                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key, level)
+                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
+                                                     level, payload.hops + 1)
                     self.ez_send(neighbour.get_peer(), response_payload)
                     return
                 else:
@@ -100,21 +104,27 @@ class SkipGraphCommunity(Community):
             if left_neighbour:
                 self.logger.debug("Peer %s exhausted search - returning left neighbour as search result",
                                   self.get_my_short_id())
-                response_payload = SearchResponsePayload(payload.identifier, left_neighbour.to_payload())
+                response_payload = SearchResponsePayload(payload.identifier, left_neighbour.to_payload(), payload.hops)
                 self.ez_send(originator_node.get_peer(), response_payload)
             else:
                 # We also don't have a left neighbour - return ourselves as last resort
-                response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload())
+                response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(),
+                                                         payload.hops)
                 self.ez_send(originator_node.get_peer(), response_payload)
 
     @lazy_wrapper(SearchResponsePayload)
     def on_search_response(self, peer: Peer, payload: SearchResponsePayload):
-        self.logger.info("Peer %s received search response from peer %s (resulting key: %d)",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.response.key)
+        self.logger.info("Peer %s received search response from peer %s (resulting key: %d, hops: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         payload.response.key, payload.hops)
 
         if not self.request_cache.has("search", payload.identifier):
             self.logger.warning("search cache with id %s not found", payload.identifier)
             return
+
+        if payload.hops not in self.search_hops:
+            self.search_hops[payload.hops] = 0
+        self.search_hops[payload.hops] += 1
 
         cache = self.request_cache.pop("search", payload.identifier)
         node = SGNode.from_payload(payload.response)
@@ -168,15 +178,16 @@ class SkipGraphCommunity(Community):
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
     async def search(self, key: int, introducer_peer: Optional[Peer] = None) -> SGNode:
+        self.logger.info("Peer %s initiating search for key %d", self.get_my_short_id(), key)
         cache = SearchRequestCache(self)
         self.request_cache.add(cache)
         if introducer_peer:
             self.ez_send(introducer_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
-                                                        key, self.routing_table.height() - 1))
+                                                        key, self.routing_table.height() - 1, 0))
         else:
             # This is a regular search. Send a Search message to yourself to initiate the search.
             self.ez_send(self.my_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
-                                                     key, self.routing_table.height() - 1))
+                                                     key, self.routing_table.height() - 1, 0))
             pass
 
         response = await cache.future

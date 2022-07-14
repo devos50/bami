@@ -10,8 +10,16 @@ from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
 class BasicSkipgraphSimulation(SkipgraphSimulation):
 
+    def __init__(self, settings: SimulationSettings):
+        super().__init__(settings)
+        self.searches_done = 0
+
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
+
+        # Reset all search hops statistics (since introduction will also conduct a search)
+        for node in self.nodes:
+            node.overlay.search_hops = {}
 
         async def do_search(delay, node, search_key):
             await sleep(delay)
@@ -31,8 +39,12 @@ class BasicSkipgraphSimulation(SkipgraphSimulation):
                     assert res.key <= search_key and self.node_keys_sorted[res_ind + 1] > search_key, \
                         "Result: %d search key: %d" % (res.key, search_key)
 
+            self.searches_done += 1
+            if self.searches_done % 100 == 0:
+                print("Completed %d searches..." % self.searches_done)
+
         # Schedule some searches
-        for _ in range(100):
+        for _ in range(5000):
             random_node = random.choice(self.nodes)
             ensure_future(do_search(random.random() * 20, random_node, random.randint(0, 2 ** 32)))
 

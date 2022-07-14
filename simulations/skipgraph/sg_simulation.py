@@ -46,15 +46,20 @@ class SkipgraphSimulation(BamiSimulation):
 
         node_ids = list(range(1, len(self.nodes)))
         random.shuffle(node_ids)
+        count = 0
         for ind in node_ids:
+            if count % 100 == 0:
+                print("%d nodes joined the Skip Graph!" % count)
+
             introducer_id = random.choice(node_ids_that_joined)
             # Make sure this node knows about the introducer peer
-            print("Node %d will join the Skip Graph using introducer peer %d" % (ind, introducer_id))
+            self.logger.info("Node %d will join the Skip Graph using introducer peer %d", ind, introducer_id)
             self.nodes[ind].overlay.peers_info[self.nodes[introducer_id].overlay.my_peer] = self.nodes[introducer_id].overlay.get_my_node()
             await self.nodes[ind].overlay.join(introducer_peer=self.nodes[introducer_id].overlay.my_peer)
             node_ids_that_joined.append(ind)
             await sleep(0.1)
-            print("Node %d joined the Skip Graph..." % ind)
+            self.logger.info("Node %d joined the Skip Graph..." % ind)
+            count += 1
 
         # Verify the integrity of the Skip Graph
         if not verify_skip_graph_integrity(self.nodes):
@@ -85,3 +90,16 @@ class SkipgraphSimulation(BamiSimulation):
                         msg_stats_file.write("%d,%d,%d,%d,%d,%d\n" % (ind, msg_id, network_stats.num_up,
                                                                       network_stats.num_down, network_stats.bytes_up,
                                                                       network_stats.bytes_down))
+
+        # Search statistics
+        hops_freq = {}
+        for node in self.nodes:
+            for num_hops, freq in node.overlay.search_hops.items():
+                if num_hops not in hops_freq:
+                    hops_freq[num_hops] = 0
+                hops_freq[num_hops] += freq
+
+        with open(os.path.join(self.data_dir, "search_hops.csv"), "w") as search_hops_file:
+            search_hops_file.write("peers,hops,freq\n")
+            for num_hops, freq in hops_freq.items():
+                search_hops_file.write("%d,%d,%d\n" % (self.settings.peers, num_hops, freq))
