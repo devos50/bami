@@ -13,6 +13,7 @@ from ipv8.test.mocking.ipv8 import MockIPv8
 
 class TestSkipGraphCommunityBase(TestBase):
     NUM_NODES = 2
+    COMMUNITY = SkipGraphCommunity
 
     def initialize_routing_tables(self, nodes_info):
         for ind, node_info in enumerate(nodes_info):
@@ -24,7 +25,7 @@ class TestSkipGraphCommunityBase(TestBase):
 
     def setUp(self):
         super(TestSkipGraphCommunityBase, self).setUp()
-        self.initialize(SkipGraphCommunity, self.NUM_NODES)
+        self.initialize(self.COMMUNITY, self.NUM_NODES)
 
         MembershipVector.LENGTH = 2
         nodes_info = [(0, [0, 0]), (1, [0, 1])]
@@ -32,7 +33,7 @@ class TestSkipGraphCommunityBase(TestBase):
         self.initialize_routing_tables(nodes_info)
 
     def create_node(self):
-        return MockIPv8("curve25519", SkipGraphCommunity)
+        return MockIPv8("curve25519", self.COMMUNITY)
 
     def assert_not_self_in_rt(self):
         """

@@ -3,6 +3,8 @@ from asyncio import get_event_loop
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List
 
+from ipv8.util import fail
+
 from bami.skipgraph import RIGHT, LEFT, Direction
 from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache
 from bami.skipgraph.membership_vector import MembershipVector
@@ -189,6 +191,10 @@ class SkipGraphCommunity(Community):
             self.ez_send(introducer_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
                                                         key, self.routing_table.height() - 1, 0))
         else:
+            if not self.routing_table:
+                self.logger.error("Routing table not initialized! Failing search")
+                return fail("Routing table not initialized!")
+
             # This is a regular search. Send a Search message to yourself to initiate the search.
             self.ez_send(self.my_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
                                                      key, self.routing_table.height() - 1, 0))
