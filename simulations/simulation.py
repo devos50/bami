@@ -6,6 +6,7 @@ import time
 from typing import Optional
 
 import yappi
+from ipv8.messaging.interfaces.statistics_endpoint import StatisticsEndpoint
 
 from bami.basalt.community import BasaltCommunity
 from bami.skipgraph.community import SkipGraphCommunity
@@ -57,6 +58,9 @@ class BamiSimulation:
             instance = IPv8(config.finalize(), endpoint_override=endpoint,
                             extra_communities={'BasaltCommunity': BasaltCommunity,
                                                'SkipGraphCommunity': SkipGraphCommunity})
+            if self.settings.enable_community_statistics:
+                instance.endpoint = StatisticsEndpoint(endpoint)
+
             await instance.start()
 
             # Set the WAN address of the peer to the address of the endpoint
@@ -70,6 +74,10 @@ class BamiSimulation:
                     if overlay.__class__.__name__ == self.MAIN_OVERLAY:
                         instance.overlay = overlay
                         break
+
+            if self.settings.enable_community_statistics:
+                instance.overlay.endpoint = instance.endpoint
+                instance.endpoint.enable_community_statistics(instance.overlay.get_prefix(), True)
 
             self.nodes.append(instance)
 

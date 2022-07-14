@@ -1,3 +1,4 @@
+import os
 import random
 from asyncio import ensure_future, sleep
 
@@ -89,12 +90,34 @@ class BasicSkipgraphSimulation(BamiSimulation):
                         return False
         return True
 
+    def on_simulation_finished(self):
+        """
+        The experiment is finished. Write the results away.
+        """
+
+        # Bandwidth statistics
+        with open(os.path.join("data", "bw_usage.csv"), "w") as bw_file:
+            bw_file.write("peer,bytes_up,bytes_down\n")
+            for ind, node in enumerate(self.nodes):
+                bw_file.write("%d,%d,%d\n" % (ind, node.overlay.endpoint.bytes_up, node.overlay.endpoint.bytes_down))
+
+        # Message statistics
+        if self.settings.enable_community_statistics:
+            with open(os.path.join("data", "msg_statistics.csv"), "w") as msg_stats_file:
+                msg_stats_file.write("peer,msg_id,num_up,num_down,bytes_up,bytes_down\n")
+                for ind, node in enumerate(self.nodes):
+                    for msg_id, network_stats in node.endpoint.statistics[node.overlay.get_prefix()].items():
+                        msg_stats_file.write("%d,%d,%d,%d,%d,%d\n" % (ind, msg_id, network_stats.num_up,
+                                                                      network_stats.num_down, network_stats.bytes_up,
+                                                                      network_stats.bytes_down))
+
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.peers = 2000
+    settings.peers = 100
     settings.duration = 20
     settings.logging_level = "ERROR"
+    settings.enable_community_statistics = True
     simulation = BasicSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 
