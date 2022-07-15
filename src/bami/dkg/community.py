@@ -1,3 +1,4 @@
+from asyncio import get_event_loop
 from binascii import unhexlify
 from typing import List
 
@@ -29,6 +30,8 @@ class DKGCommunity(SkipGraphCommunity):
                                                                               self.my_peer.key,
                                                                               self.on_new_triplets_generated)
 
+        self.edge_search_latencies: List[float] = []  # Keep track of the latency of individual edge searches
+
         self.add_message_handler(TripletMessage, self.on_triplet_message)
         self.add_message_handler(StorageRequestPayload, self.on_storage_request)
         self.add_message_handler(StorageResponsePayload, self.on_storage_response)
@@ -42,10 +45,12 @@ class DKGCommunity(SkipGraphCommunity):
         """
         Query the network to fetch incoming/outgoing edges of the node labelled with the content hash.
         """
+        start_time = get_event_loop().time()
         key = int.from_bytes(content_hash, 'big') % (2 ** 32)
         target_node = await self.search(key)
         if not target_node:
             self.logger.warning("Search node with key %d failed and returned nothing - bailing out.", key)
+            self.edge_search_latencies.append(get_event_loop().time() - start_time)
             return []
 
         # Query the target node directly for the edges.
@@ -55,6 +60,7 @@ class DKGCommunity(SkipGraphCommunity):
         self.request_cache.add(cache)
         self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
         triplets = await cache.future
+        self.edge_search_latencies.append(get_event_loop().time() - start_time)
         return triplets
 
     @lazy_wrapper(TripletsRequestPayload)

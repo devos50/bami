@@ -1,4 +1,3 @@
-from binascii import hexlify
 from typing import Set
 
 from bami.dkg.db.triplet import Triplet
@@ -25,7 +24,7 @@ class PTNRule(Rule):
             # Some items can be a list and we have to add multiple triplets
             if isinstance(tail, list):
                 for tail_item in tail:
-                    triplets.add(Triplet(hexlify(content.identifier), relation, Rule.convert_to_bytes(tail_item)))
+                    triplets.add(Triplet(content.identifier, relation, Rule.convert_to_bytes(tail_item)))
             else:
-                triplets.add(Triplet(hexlify(content.identifier), relation, Rule.convert_to_bytes(tail)))
+                triplets.add(Triplet(content.identifier, relation, Rule.convert_to_bytes(tail)))
         return triplets
