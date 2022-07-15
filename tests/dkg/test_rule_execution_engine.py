@@ -1,11 +1,11 @@
 import pytest
 
-from dkg.core.content import Content
-from dkg.core.db.content_database import ContentDatabase
-from dkg.core.db.knowledge_graph import KnowledgeGraph
-from dkg.core.db.rules_database import RulesDatabase
-from dkg.core.rule_execution_engine import RuleExecutionEngine
-from dkg.core.rules.dummy import DummyRule
+from bami.dkg.content import Content
+from bami.dkg.db.content_database import ContentDatabase
+from bami.dkg.db.knowledge_graph import KnowledgeGraph
+from bami.dkg.db.rules_database import RulesDatabase
+from bami.dkg.rule_execution_engine import RuleExecutionEngine
+from bami.dkg.rules.dummy import DummyRule
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def knowledge_graph():
 
 @pytest.fixture
 def rule_execution_engine(content_db, rules_db, knowledge_graph):
-    return RuleExecutionEngine(content_db, rules_db, knowledge_graph)
+    return RuleExecutionEngine(content_db, rules_db, knowledge_graph, None)
 
 
 def test_dummy_rule(rule_execution_engine):

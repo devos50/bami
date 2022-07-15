@@ -1,11 +1,12 @@
 from binascii import unhexlify
 from typing import List
 
-from bami.dkg.cache import StorageRequestCache
+from bami.dkg.cache import StorageRequestCache, TripletsRequestCache
 from bami.dkg.content import Content
 from bami.skipgraph.community import SkipGraphCommunity
 
-from bami.dkg.payloads import TripletsMessage, StorageRequestPayload, StorageResponsePayload
+from bami.dkg.payloads import TripletMessage, StorageRequestPayload, StorageResponsePayload, TripletsRequestPayload, \
+    TripletsResponsePayload, TripletsEmptyResponsePayload
 from bami.dkg.db.content_database import ContentDatabase
 from bami.dkg.db.knowledge_graph import KnowledgeGraph
 from bami.dkg.db.rules_database import RulesDatabase
@@ -28,9 +29,12 @@ class DKGCommunity(SkipGraphCommunity):
                                                                               self.my_peer.key,
                                                                               self.on_new_triplets_generated)
 
-        self.add_message_handler(TripletsMessage, self.on_triplet_message)
+        self.add_message_handler(TripletMessage, self.on_triplet_message)
         self.add_message_handler(StorageRequestPayload, self.on_storage_request)
         self.add_message_handler(StorageResponsePayload, self.on_storage_response)
+        self.add_message_handler(TripletsRequestPayload, self.on_triplets_request)
+        self.add_message_handler(TripletsResponsePayload, self.on_triplets_response)
+        self.add_message_handler(TripletsEmptyResponsePayload, self.on_empty_triplets_response)
 
         self.logger.info("The DKG community started!")
 
@@ -45,7 +49,48 @@ class DKGCommunity(SkipGraphCommunity):
             return []
 
         # Query the target node directly for the edges.
-        # TODO could we model it such that each node is responsible for multiple keys in the SG? Each node in the SG then represents a content item and could still have an IP attached.
+        # TODO could we integrate this directly in our SearchPayload at the lower layer? Might save a message?
+
+        cache = TripletsRequestCache(self)
+        self.request_cache.add(cache)
+        self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
+        triplets = await cache.future
+        return triplets
+
+    @lazy_wrapper(TripletsRequestPayload)
+    def on_triplets_request(self, peer: Peer, payload: TripletsRequestPayload):
+        triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
+        if not triplets:
+            self.ez_send(peer, TripletsEmptyResponsePayload(payload.identifier, payload.content))
+            return
+
+        for triplet in triplets:
+            rp = TripletsResponsePayload(payload.identifier, payload.content, len(triplets), triplet.to_payload())
+            self.ez_send(peer, rp)
+
+    @lazy_wrapper(TripletsResponsePayload)
+    def on_triplets_response(self, peer: Peer, payload: TripletsResponsePayload):
+        self.logger.info("Peer %s received triplets response from peer %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
+
+        if not self.request_cache.has("triplets", payload.identifier):
+            self.logger.warning("triplets cache with id %s not found", payload.identifier)
+            return
+
+        cache: TripletsRequestCache = self.request_cache.get("triplets", payload.identifier)
+        cache.on_triplet_response(payload)
+
+    @lazy_wrapper(TripletsEmptyResponsePayload)
+    def on_empty_triplets_response(self, peer: Peer, payload: TripletsResponsePayload):
+        self.logger.info("Peer %s received empty triplets response from peer %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
+
+        if not self.request_cache.has("triplets", payload.identifier):
+            self.logger.warning("triplets cache with id %s not found", payload.identifier)
+            return
+
+        cache: TripletsRequestCache = self.request_cache.pop("triplets", payload.identifier)
+        cache.future.set_result([])
 
     async def on_new_triplets_generated(self, content: Content, triplets: List[Triplet]):
         """
@@ -64,7 +109,7 @@ class DKGCommunity(SkipGraphCommunity):
             # Store the triplets on this peer
             # TODO we should probably use EVA here instead of sending individual Triplet messages
             for triplet in triplets:
-                self.ez_send(target_node.get_peer(), TripletsMessage([triplet.to_payload()]))
+                self.ez_send(target_node.get_peer(), TripletMessage(triplet.to_payload()))
         else:
             self.logger.warning("Peer %s refused storage request for key %d",
                                 target_node.public_key.key_to_bin(), content.get_key())
@@ -99,11 +144,10 @@ class DKGCommunity(SkipGraphCommunity):
         cache = self.request_cache.pop("store", payload.identifier)
         cache.future.set_result(payload.response)
 
-    @lazy_wrapper(TripletsMessage)
-    def on_triplet_message(self, _: Peer, payload: TripletsMessage):
+    @lazy_wrapper(TripletMessage)
+    def on_triplet_message(self, _: Peer, payload: TripletMessage):
         # TODO we should verify whether the triplets are valid, etc...
-        for triplet in payload.triplets:
-            self.knowledge_graph.add_triplet(triplet)
+        self.knowledge_graph.add_triplet(payload.triplet)
 
     def start_rule_execution_engine(self):
         self.rule_execution_engine.start()

@@ -21,9 +21,20 @@ class TestDKGCommunity(TestSkipGraphCommunityBase):
         """
         await self.introduce_nodes()
         await self.nodes[1].overlay.join(introducer_peer=self.nodes[0].overlay.my_peer)
-        triplet = Triplet(b"a", b"b", b"c")
-        await self.nodes[1].overlay.on_new_triplets_generated(Content(b"abcdefg", b""), [triplet])
-        await self.deliver_messages()
-        assert self.nodes[0].overlay.knowledge_graph.get_num_edges() == 1
+        triplet = Triplet(b"abcdefg", b"b", b"c")
 
-        # Now we try to fetch all edges
+        # Test the situation where no edges are returned
+        triplets = await self.nodes[0].overlay.search_edges(b"abcdefg")
+        assert len(triplets) == 0
+
+        await self.nodes[0].overlay.on_new_triplets_generated(Content(b"abcdefg", b""), [triplet])
+        await self.deliver_messages()
+        assert self.nodes[1].overlay.knowledge_graph.get_num_edges() == 1
+
+        # Now we try to fetch all edges from node 1
+        triplets = await self.nodes[0].overlay.search_edges(b"abcdefg")
+        assert len(triplets) == 1
+
+        # Test searching locally
+        triplets = await self.nodes[1].overlay.search_edges(b"abcdefg")
+        assert len(triplets) == 1
