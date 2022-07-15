@@ -8,6 +8,8 @@ from asyncio import sleep
 from typing import Optional
 
 import yappi
+
+from bami.dkg.community import DKGCommunity
 from ipv8.messaging.interfaces.statistics_endpoint import StatisticsEndpoint
 
 from bami.basalt.community import BasaltCommunity
@@ -60,7 +62,8 @@ class BamiSimulation:
             config.set_log_level(self.settings.logging_level)
             instance = IPv8(config.finalize(), endpoint_override=endpoint,
                             extra_communities={'BasaltCommunity': BasaltCommunity,
-                                               'SkipGraphCommunity': SkipGraphCommunity})
+                                               'SkipGraphCommunity': SkipGraphCommunity,
+                                               'DKGCommunity': DKGCommunity})
             if self.settings.enable_community_statistics:
                 instance.endpoint = StatisticsEndpoint(endpoint)
 

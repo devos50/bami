@@ -96,6 +96,10 @@ class DKGCommunity(SkipGraphCommunity):
         """
         The rule engine generated new triplets. We should store these triplets in the network now.
         """
+        if not triplets:
+            self.logger.info("Content generated no triplets - won't send out storage requests")
+            return
+
         # TODO should we also store the other end of an edge on the respective node?
         target_node = await self.search(content.get_key())
         if not target_node:
@@ -134,8 +138,8 @@ class DKGCommunity(SkipGraphCommunity):
 
     @lazy_wrapper(StorageResponsePayload)
     def on_storage_response(self, peer: Peer, payload: StorageResponsePayload):
-        self.logger.info("Peer %s received storage response from peer %s",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
+        self.logger.info("Peer %s received storage response from peer %s (response: %s)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), bool(payload.response))
 
         if not self.request_cache.has("store", payload.identifier):
             self.logger.warning("store cache with id %s not found", payload.identifier)
@@ -145,8 +149,10 @@ class DKGCommunity(SkipGraphCommunity):
         cache.future.set_result(payload.response)
 
     @lazy_wrapper(TripletMessage)
-    def on_triplet_message(self, _: Peer, payload: TripletMessage):
+    def on_triplet_message(self, peer: Peer, payload: TripletMessage):
         # TODO we should verify whether the triplets are valid, etc...
+        self.logger.info("Peer %s received triplet message from peer %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
         self.knowledge_graph.add_triplet(payload.triplet)
 
     def start_rule_execution_engine(self):

@@ -1,3 +1,4 @@
+import hashlib
 import os
 import random
 from asyncio import sleep
@@ -31,8 +32,12 @@ class SkipgraphSimulation(BamiSimulation):
 
         # Initialize the routing tables of each node after starting the IPv8 nodes.
         for ind, node in enumerate(self.nodes):
-            pk = node.overlay.my_peer.public_key.key_to_bin()
-            int_pk = int.from_bytes(pk, 'big') % (2 ** 32)
+            # Create a hash from the PK
+            h = hashlib.md5()
+            h.update(node.overlay.my_peer.public_key.key_to_bin())
+            #int_pk = (2 ** 32) // len(self.nodes) * ind
+            #int_pk = random.randint(0, (2 ** 32))
+            int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
             self.node_keys_sorted.append(int_pk)
             node.overlay.initialize_routing_table(int_pk)
 
@@ -76,10 +81,10 @@ class SkipgraphSimulation(BamiSimulation):
         """
 
         # Bandwidth statistics
-        with open(os.path.join(self.data_dir, "bw_usage.csv"), "w") as bw_file:
-            bw_file.write("peer,bytes_up,bytes_down\n")
-            for ind, node in enumerate(self.nodes):
-                bw_file.write("%d,%d,%d\n" % (ind, node.overlay.endpoint.bytes_up, node.overlay.endpoint.bytes_down))
+        # with open(os.path.join(self.data_dir, "bw_usage.csv"), "w") as bw_file:
+        #     bw_file.write("peer,bytes_up,bytes_down\n")
+        #     for ind, node in enumerate(self.nodes):
+        #         bw_file.write("%d,%d,%d\n" % (ind, node.overlay.endpoint.bytes_up, node.overlay.endpoint.bytes_down))
 
         # Message statistics
         if self.settings.enable_community_statistics:
