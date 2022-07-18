@@ -80,11 +80,6 @@ class SkipgraphSimulation(BamiSimulation):
             self.key_to_node_ind[node.overlay.routing_table.key] = ind
             self.target_frequency[ind] = 0
 
-        # Reset all search hops statistics (since introduction will also conduct a search)
-        for node in self.nodes:
-            node.overlay.search_hops = {}
-            node.overlay.search_latencies = []
-
         # Nodes are now joining the Skip Graph.
         # For better performance and load balancing, we keep track of the nodes that have already joined, and the
         # nodes that still need to join. We choose a random node that already joined as introducer peer.
@@ -151,11 +146,17 @@ class SkipgraphSimulation(BamiSimulation):
                 search_hops_file.write("%d,%d,%d\n" % (self.settings.peers, num_hops, freq))
 
         # Search latencies
-        with open(os.path.join(self.data_dir, "search_latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,time\n")
+        with open(os.path.join(self.data_dir, "latencies.csv"), "w") as latencies_file:
+            latencies_file.write("peers,operation,time\n")
             for node in self.nodes:
                 for latency in node.overlay.search_latencies:
-                    latencies_file.write("%d,%f\n" % (self.settings.peers, latency))
+                    latencies_file.write("%d,%s,%f\n" % (self.settings.peers, "search", latency))
+
+                for latency in node.overlay.join_latencies:
+                    latencies_file.write("%d,%s,%f\n" % (self.settings.peers, "join", latency))
+
+                for latency in node.overlay.leave_latencies:
+                    latencies_file.write("%d,%s,%f\n" % (self.settings.peers, "leave", latency))
 
         # Write statistics on search targets
         with open(os.path.join(self.data_dir, "search_targets.csv"), "w") as out_file:
