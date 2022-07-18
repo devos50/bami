@@ -15,6 +15,8 @@ class ChurnSkipgraphSimulation(SkipgraphSimulation):
         super().__init__(settings)
         self.inactive_node_ids = set()
         self.active_node_ids = set()
+        self.joining_node_ids = set()
+        self.leaving_node_ids = set()
 
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
@@ -29,21 +31,29 @@ class ChurnSkipgraphSimulation(SkipgraphSimulation):
         random_inactive_node_id = random.choice(list(self.inactive_node_ids))
         print("Node %d will join the Skip Graph" % random_inactive_node_id)
         random_active_node = self.nodes[random_inactive_node_id]
-        self.active_node_ids.add(random_inactive_node_id)
         self.inactive_node_ids.remove(random_inactive_node_id)
+        self.joining_node_ids.add(random_inactive_node_id)
         introducer_node_id = random.choice(list(self.active_node_ids))
         introducer_node = self.nodes[introducer_node_id]
         self.initialize_routing_table(random_active_node)
         random_active_node.overlay.peers_info[introducer_node.overlay.my_peer] = introducer_node.overlay.get_my_node()
+
         await random_active_node.overlay.join(introducer_peer=introducer_node.overlay.my_peer)
+
+        self.active_node_ids.add(random_inactive_node_id)
+        self.joining_node_ids.remove(random_inactive_node_id)
 
     async def leave_random_node(self):
         random_active_node_id = random.choice(list(self.active_node_ids))
         print("Node %d will leave the Skip Graph" % random_active_node_id)
         random_active_node = self.nodes[random_active_node_id]
         self.active_node_ids.remove(random_active_node_id)
-        self.inactive_node_ids.add(random_active_node_id)
+        self.leaving_node_ids.add(random_active_node_id)
+
         await random_active_node.overlay.leave()
+
+        self.leaving_node_ids.remove(random_active_node_id)
+        self.inactive_node_ids.add(random_active_node_id)
 
     async def do_churn(self):
         """
@@ -66,14 +76,14 @@ class ChurnSkipgraphSimulation(SkipgraphSimulation):
             print("Skip Graph not valid!!")
             for ind, node in enumerate(self.nodes):
                 print("=== node %d (key: %d) ===\n%s\n" % (
-                ind, node.overlay.routing_table.key, node.overlay.routing_table))
+                    ind, node.overlay.routing_table.key, node.overlay.routing_table))
             exit(1)
 
 
 if __name__ == "__main__":
     settings = SimulationSettings()
     settings.peers = 100
-    settings.duration = 3600
+    settings.duration = 1800
     settings.logging_level = "ERROR"
     settings.profile = False
     settings.enable_community_statistics = True

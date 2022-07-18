@@ -1,7 +1,6 @@
 """
 Simulation that initiates a number of searches in the Skip Graph.
 """
-import os
 import random
 from asyncio import ensure_future
 

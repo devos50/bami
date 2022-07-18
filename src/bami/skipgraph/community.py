@@ -252,8 +252,8 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(SetLinkPayload)
     def on_set_link(self, peer: Peer, payload: SetLinkPayload):
-        self.logger.info("Received set link response payload from peer %s",
-                         self.get_short_id(peer.public_key.key_to_bin()))
+        self.logger.info("Peer %s received set link response payload from peer %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
         cache = None
 
         if self.request_cache.has("link", payload.identifier):
@@ -392,6 +392,8 @@ class SkipGraphCommunity(Community):
         """
         Gracefully leave the skip graph by informing the neighbours at each level.
         """
+        start_time = get_event_loop().time()
+
         self.logger.info("Peer %s will leave the Skip Graph", self.get_my_short_id())
         self.is_leaving = True
         level = self.routing_table.height()
