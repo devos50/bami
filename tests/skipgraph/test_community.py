@@ -153,6 +153,13 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
         if not verify_skip_graph_integrity(self.nodes):
             assert False, "Skip graph invalid!"
 
+        # Let the other nodes leave
+        await self.nodes[1].overlay.leave()
+        await self.nodes[3].overlay.leave()
+
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
+
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
     NUM_NODES = 7
