@@ -8,6 +8,8 @@ def verify_skip_graph_integrity(nodes) -> bool:
     """
     keys_to_nodes = {}
     for node in nodes:
+        if not node.overlay.routing_table:
+            continue
         keys_to_nodes[node.overlay.routing_table.key] = node
 
     # At every level, the key of the left neighbour should be less than the node's key.
@@ -16,6 +18,9 @@ def verify_skip_graph_integrity(nodes) -> bool:
     # Verify the links
     for level in range(MembershipVector.LENGTH + 1):
         for node in nodes:
+            if not node.overlay.routing_table:
+                continue
+
             left_neighbour = node.overlay.routing_table.get(level, LEFT)
             if left_neighbour:
                 if left_neighbour.key >= node.overlay.routing_table.key:

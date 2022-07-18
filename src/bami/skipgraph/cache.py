@@ -30,3 +30,24 @@ class SearchRequestCache(RandomNumberCache):
         super().__init__(community.request_cache, "search")
         self.future = Future()
         self.start_time = get_event_loop().time()
+
+
+class DeleteCache(RandomNumberCache):
+
+    def __init__(self, community):
+        super().__init__(community.request_cache, "delete")
+        self.future = Future()
+
+
+class SetNeighbourNilCache(RandomNumberCache):
+
+    def __init__(self, community):
+        super().__init__(community.request_cache, "set-neighbour-nil")
+        self.future = Future()
+
+
+class FindNewNeighbourCache(RandomNumberCache):
+
+    def __init__(self, community):
+        super().__init__(community.request_cache, "find-new-neighbour")
+        self.future = Future()

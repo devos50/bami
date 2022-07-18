@@ -66,7 +66,7 @@ class DKGSimulation(SkipgraphSimulation):
             if self.searches_done % 100 == 0:
                 print("Completed %d searches..." % self.searches_done)
 
-        for _ in range(10000):
+        for _ in range(1000):
             content_hash = random.choice(self.content_hashes)
             random_node = random.choice(self.nodes)
             ensure_future(do_search(random.random() * 20, random_node, content_hash))

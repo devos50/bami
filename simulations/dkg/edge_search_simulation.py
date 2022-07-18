@@ -6,7 +6,7 @@ from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.settings import SimulationSettings
 
 
-PEERS = [100, 200, 400, 800, 1600, 3200, 6400, 12800]
+PEERS = [100]
 
 
 def combine_edge_search_latencies():

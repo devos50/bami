@@ -69,8 +69,27 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
     async def test_join(self):
         await self.introduce_nodes()
         await self.nodes[0].overlay.join(introducer_peer=self.nodes[1].overlay.my_peer)
+        verify_skip_graph_integrity(self.nodes)
         assert self.nodes[0].overlay.routing_table.height() == 3
         assert self.nodes[1].overlay.routing_table.height() == 3
+
+    async def test_leave_node0(self):
+        await self.introduce_nodes()
+        await self.nodes[0].overlay.join(introducer_peer=self.nodes[1].overlay.my_peer)
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
+        await self.nodes[0].overlay.leave()
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
+
+    async def test_leave_node1(self):
+        await self.introduce_nodes()
+        await self.nodes[0].overlay.join(introducer_peer=self.nodes[1].overlay.my_peer)
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
+        await self.nodes[1].overlay.leave()
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
 
     async def test_search(self):
         await self.introduce_nodes()
@@ -112,6 +131,27 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
             if not verify_skip_graph_integrity(self.nodes):
                 assert False, "Skip graph invalid!"
             self.assert_not_self_in_rt()
+
+    async def test_leave(self):
+        """
+        Test nodes leaving the skip graph
+        """
+        await self.introduce_nodes()
+
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
+
+        await self.nodes[2].overlay.leave()
+
+        # Make sure that the Skip Graph neighbours have been updated accordingly
+        assert self.nodes[1].overlay.routing_table.get(0, RIGHT).key == 36
+        assert self.nodes[3].overlay.routing_table.get(0, LEFT).key == 21
+
+        if not verify_skip_graph_integrity(self.nodes):
+            assert False, "Skip graph invalid!"
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
@@ -215,19 +255,6 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
             node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
 
         # Verify the Skip Graph
-        self.verify_skip_graph()
-
-    async def test_concurrent_join(self):
-        await self.introduce_nodes()
-        for node in self.nodes[1:]:
-            ensure_future(node.overlay.join(introducer_peer=self.nodes[0].my_peer))
-
-        await self.deliver_messages()
-        self.assert_not_self_in_rt()
-
-        for ind, node in enumerate(self.nodes):
-            node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
-
         self.verify_skip_graph()
 
     async def test_search(self):

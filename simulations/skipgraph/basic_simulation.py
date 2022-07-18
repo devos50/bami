@@ -56,7 +56,7 @@ class BasicSkipgraphSimulation(SkipgraphSimulation):
                 print("Completed %d searches..." % self.searches_done)
 
         # Schedule some searches
-        for _ in range(10000):
+        for _ in range(1000):
             random_node = random.choice(self.nodes)
             ensure_future(do_search(random.random() * 20, random_node, random.randint(0, 2 ** 32)))
 

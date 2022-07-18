@@ -6,12 +6,14 @@ from typing import Optional, Dict, List
 from ipv8.util import fail
 
 from bami.skipgraph import RIGHT, LEFT, Direction
-from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache
+from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache, DeleteCache, \
+    FindNewNeighbourCache, SetNeighbourNilCache
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
 from bami.skipgraph.payload import SearchPayload, SearchResponsePayload, NodeInfoPayload, NeighbourRequestPayload, \
     NeighbourResponsePayload, GetLinkPayload, SetLinkPayload, \
-    BuddyPayload
+    BuddyPayload, DeletePayload, NoNeighbourPayload, FindNewNeighbourPayload, ConfirmDeletePayload, \
+    FoundNewNeighbourPayload, SetNeighbourNilPayload
 from bami.skipgraph.routing_table import RoutingTable
 from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
@@ -35,14 +37,26 @@ class SkipGraphCommunity(Community):
 
         self.add_message_handler(SearchPayload.msg_id, self.on_search_request)
         self.add_message_handler(SearchResponsePayload, self.on_search_response)
+
+        # Join messages
         self.add_message_handler(NeighbourRequestPayload, self.on_neighbour_request)
         self.add_message_handler(NeighbourResponsePayload, self.on_neighbour_response)
         self.add_message_handler(GetLinkPayload, self.on_get_link)
         self.add_message_handler(SetLinkPayload, self.on_set_link)
         self.add_message_handler(BuddyPayload, self.on_buddy)
 
+        # Leave messages
+        self.add_message_handler(DeletePayload, self.on_delete)
+        self.add_message_handler(NoNeighbourPayload, self.on_no_neighbour)
+        self.add_message_handler(FindNewNeighbourPayload, self.on_find_new_neighbour)
+        self.add_message_handler(FoundNewNeighbourPayload, self.on_found_new_neighbour)
+        self.add_message_handler(ConfirmDeletePayload, self.on_confirm_delete)
+        self.add_message_handler(SetNeighbourNilPayload, self.on_set_neighbour_nil)
+
         self.search_hops: Dict[int, int] = {}  # Keep track of the number of hops per search
         self.search_latencies: List[int] = []  # Keep track of the latency of individual searches
+
+        self.is_leaving: bool = False  # Whether we are leaving the Skip Graph
 
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
 
@@ -373,6 +387,154 @@ class SkipGraphCommunity(Community):
 
         self.routing_table.max_level = level
         self.logger.info("Peer %s has joined the Skip Graph!", self.get_my_short_id())
+
+    async def leave(self) -> bool:
+        """
+        Gracefully leave the skip graph by informing the neighbours at each level.
+        """
+        self.logger.info("Peer %s will leave the Skip Graph", self.get_my_short_id())
+        self.is_leaving = True
+        level = self.routing_table.height()
+        while level >= 0:
+            rn: Optional[SGNode] = self.routing_table.get(level, RIGHT)
+            if rn:
+                cache = DeleteCache(self)
+                self.request_cache.add(cache)
+                self.ez_send(rn.get_peer(), DeletePayload(cache.number, self.get_my_node().to_payload(), level))
+                confirmed = await cache.future
+                if not confirmed:  # We received a NoNeighbour message
+                    ln: Optional[SGNode] = self.routing_table.get(level, LEFT)
+                    if ln:
+                        cache = SetNeighbourNilCache(self)
+                        self.request_cache.add(cache)
+                        payload = SetNeighbourNilPayload(cache.number, self.get_my_node().to_payload(), level)
+                        self.ez_send(ln.get_peer(), payload)
+                        confirmed = await cache.future
+            else:
+                ln: Optional[SGNode] = self.routing_table.get(level, LEFT)
+                if ln:
+                    # There is no right neighbour. Simply inform our left neighbour to set the right neighbour to nil
+                    cache = SetNeighbourNilCache(self)
+                    self.request_cache.add(cache)
+                    payload = SetNeighbourNilPayload(cache.number, self.get_my_node().to_payload(), level)
+                    self.ez_send(ln.get_peer(), payload)
+                    confirmed = await cache.future
+            self.logger.debug("Peer %s left the Skip Graph at level %d", self.get_my_short_id(), level)
+            level -= 1
+
+        self.logger.info("Peer %s left the Skip Graph", self.get_my_short_id())
+        self.is_leaving = False
+        self.routing_table = None
+        return True
+
+    async def find_new_neighbour(self, level: int) -> Optional[SGNode]:
+        self.logger.info("Peer %s finding new neighbour (level: %d)", self.get_my_short_id(), level)
+
+        ln: SGNode = self.routing_table.get(level, LEFT)
+        cache = FindNewNeighbourCache(self)
+        self.request_cache.add(cache)
+        self.ez_send(ln.get_peer(), FindNewNeighbourPayload(cache.number, self.get_my_node().to_payload(), level))
+        node = await cache.future
+        return node
+
+    @lazy_wrapper(DeletePayload)
+    async def on_delete(self, peer: Peer, payload: DeletePayload):
+        self.logger.info("Peer %s received delete message from peer %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
+
+        originator_node: SGNode = SGNode.from_payload(payload.originator)
+
+        if self.is_leaving:
+            rn: Optional[SGNode] = self.routing_table.get(payload.level, RIGHT)
+            if rn:
+                # Recurse the delete payload to the right neighbour in the Skip Graph
+                self.ez_send(rn.get_peer(), DeletePayload(payload.identifier, payload.originator, payload.level))
+            else:
+                self.ez_send(originator_node.get_peer(), NoNeighbourPayload(payload.identifier, payload.level))
+        else:
+            # Find your new left neighbour
+            new_neighbour: Optional[SGNode] = await self.find_new_neighbour(payload.level)
+            self.routing_table.set(payload.level, LEFT, new_neighbour)
+            self.ez_send(originator_node.get_peer(), ConfirmDeletePayload(payload.identifier, payload.level))
+
+    @lazy_wrapper(FindNewNeighbourPayload)
+    def on_find_new_neighbour(self, peer: Peer, payload: FindNewNeighbourPayload):
+        self.logger.info("Peer %s received find new neighbour message from peer %s (level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.level)
+
+        originator_node: SGNode = SGNode.from_payload(payload.originator)
+
+        if self.is_leaving:
+            ln: Optional[SGNode] = self.routing_table.get(payload.level, LEFT)
+            if ln:
+                new_payload = FindNewNeighbourPayload(payload.identifier, payload.originator, payload.level)
+                self.ez_send(ln.get_peer(), new_payload)
+            else:
+                new_payload = FoundNewNeighbourPayload(payload.identifier, SGNode.empty().to_payload(), payload.level)
+                self.ez_send(originator_node.get_peer(), new_payload)
+        else:
+            new_payload = FoundNewNeighbourPayload(payload.identifier, self.get_my_node().to_payload(), payload.level)
+            self.ez_send(originator_node.get_peer(), new_payload)
+            self.routing_table.set(payload.level, RIGHT, originator_node)
+
+    @lazy_wrapper(FoundNewNeighbourPayload)
+    def on_found_new_neighbour(self, peer: Peer, payload: FoundNewNeighbourPayload):
+        self.logger.info("Peer %s received found new neighbour message from peer %s (level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.level)
+
+        if not self.request_cache.has("find-new-neighbour", payload.identifier):
+            self.logger.warning("find-new-neighbour cache with id %s not found", payload.identifier)
+            return
+
+        cache = self.request_cache.pop("find-new-neighbour", payload.identifier)
+        new_neighbour = SGNode.from_payload(payload.neighbour)
+        if new_neighbour.is_empty():
+            new_neighbour = None
+        cache.future.set_result(new_neighbour)
+
+    @lazy_wrapper(NoNeighbourPayload)
+    def on_no_neighbour(self, peer: Peer, payload: NoNeighbourPayload):
+        self.logger.info("Peer %s received no neighbour message from peer %s (level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.level)
+
+        if not self.request_cache.has("delete", payload.identifier):
+            self.logger.warning("delete cache with id %s not found", payload.identifier)
+            return
+
+        cache = self.request_cache.pop("delete", payload.identifier)
+        cache.future.set_result(False)
+
+    @lazy_wrapper(ConfirmDeletePayload)
+    def on_confirm_delete(self, peer: Peer, payload: ConfirmDeletePayload):
+        self.logger.info("Peer %s received confirm delete message from peer %s (level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.level)
+
+        if self.request_cache.has("delete", payload.identifier):
+            cache = self.request_cache.pop("delete", payload.identifier)
+            cache.future.set_result(True)
+        if self.request_cache.has("set-neighbour-nil", payload.identifier):
+            cache = self.request_cache.pop("set-neighbour-nil", payload.identifier)
+            cache.future.set_result(True)
+
+    @lazy_wrapper(SetNeighbourNilPayload)
+    def on_set_neighbour_nil(self, peer: Peer, payload: SetNeighbourNilPayload):
+        self.logger.info("Peer %s received set neighbour nil message from peer %s (level: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.level)
+
+        originator_node: SGNode = SGNode.from_payload(payload.originator)
+
+        if self.is_leaving:
+            ln: Optional[SGNode] = self.routing_table.get(payload.level, LEFT)
+            if ln:
+                payload = SetNeighbourNilPayload(payload.identifier, payload.originator, payload.level)
+                self.ez_send(ln.get_peer(), payload)
+            else:
+                payload = ConfirmDeletePayload(payload.identifier, payload.level)
+                self.ez_send(originator_node.get_peer(), payload)
+        else:
+            payload = ConfirmDeletePayload(payload.identifier, payload.level)
+            self.ez_send(originator_node.get_peer(), payload)
+            self.routing_table.set(payload.level, RIGHT, None)
 
     def create_introduction_request(self, socket_address, extra_bytes=b'', new_style=False, prefix=None):
         extra_payload = SGNode(self.my_estimated_wan, self.my_peer.public_key.key_to_bin(),

@@ -55,3 +55,45 @@ class BuddyPayload(VariablePayload):
     msg_id = 10
     names = ['identifier', 'originator', 'level', 'val', 'side']
     format_list = ['I', NodeInfoPayload, 'I', 'I', 'I']
+
+
+@vp_compile
+class DeletePayload(VariablePayload):
+    msg_id = 11
+    names = ['identifier', 'originator', 'level']
+    format_list = ['I', NodeInfoPayload, 'I']
+
+
+@vp_compile
+class NoNeighbourPayload(VariablePayload):
+    msg_id = 12
+    names = ['identifier', 'level']
+    format_list = ['I', 'I']
+
+
+@vp_compile
+class FindNewNeighbourPayload(VariablePayload):
+    msg_id = 13
+    names = ['identifier', 'originator', 'level']
+    format_list = ['I', NodeInfoPayload, 'I']
+
+
+@vp_compile
+class FoundNewNeighbourPayload(VariablePayload):
+    msg_id = 14
+    names = ['identifier', 'neighbour', 'level']
+    format_list = ['I', NodeInfoPayload, 'I']
+
+
+@vp_compile
+class ConfirmDeletePayload(VariablePayload):
+    msg_id = 15
+    names = ['identifier', 'level']
+    format_list = ['I', 'I']
+
+
+@vp_compile
+class SetNeighbourNilPayload(VariablePayload):
+    msg_id = 16
+    names = ['identifier', 'originator', 'level']
+    format_list = ['I', NodeInfoPayload, 'I']
