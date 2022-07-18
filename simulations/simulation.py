@@ -16,6 +16,7 @@ from bami.basalt.community import BasaltCommunity
 from bami.skipgraph.community import SkipGraphCommunity
 
 from ipv8.configuration import ConfigBuilder
+from ipv8.taskmanager import TaskManager
 from ipv8_service import IPv8
 
 from simulation.discrete_loop import DiscreteLoop
@@ -24,7 +25,7 @@ from simulation.simulation_endpoint import SimulationEndpoint
 from simulations.settings import SimulationSettings
 
 
-class BamiSimulation:
+class BamiSimulation(TaskManager):
     """
     The main logic to run simulations with the various algorithms included in BAMI.
     To create your own simulation, you should subclass the BamiSimulation class and override the get_ipv8_builder
@@ -40,6 +41,7 @@ class BamiSimulation:
     MAIN_OVERLAY: Optional[str] = None
 
     def __init__(self, settings: SimulationSettings) -> None:
+        super().__init__()
         self.settings = settings
         self.nodes = []
         self.logger = logging.getLogger(self.__class__.__name__)

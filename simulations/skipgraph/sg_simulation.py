@@ -2,6 +2,7 @@ import hashlib
 import os
 import random
 from asyncio import sleep
+from typing import Dict
 
 from bami.skipgraph.util import verify_skip_graph_integrity
 from ipv8.configuration import ConfigBuilder
@@ -15,6 +16,33 @@ class SkipgraphSimulation(BamiSimulation):
     def __init__(self, settings: SimulationSettings) -> None:
         super().__init__(settings)
         self.node_keys_sorted = []
+        self.searches_done = 0
+        self.target_frequency: Dict[int, int] = {}
+        self.key_to_node_ind: Dict[int, int] = {}
+
+    async def do_search(self, delay, node, search_key):
+        await sleep(delay)
+        res = await node.overlay.search(search_key)
+
+        # Verify that this is the right search result
+        if res.key not in self.node_keys_sorted:
+            assert False, "We got a key result that is not registered in the Skip List!"
+
+        if search_key < self.node_keys_sorted[0]:
+            assert res.key == self.node_keys_sorted[0]
+        else:
+            res_ind = self.node_keys_sorted.index(res.key)
+            if res_ind == len(self.node_keys_sorted) - 1:
+                assert search_key > res_ind
+            else:
+                assert res.key <= search_key and self.node_keys_sorted[res_ind + 1] > search_key, \
+                    "Result: %d search key: %d" % (res.key, search_key)
+
+        self.target_frequency[self.key_to_node_ind[res.key]] += 1
+
+        self.searches_done += 1
+        if self.searches_done % 100 == 0:
+            print("Completed %d searches..." % self.searches_done)
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -27,23 +55,36 @@ class SkipgraphSimulation(BamiSimulation):
         """
         pass
 
+    def initialize_routing_table(self, node) -> None:
+        # Create a hash from the PK
+        h = hashlib.md5()
+        h.update(node.overlay.my_peer.public_key.key_to_bin())
+        # int_pk = (2 ** 32) // len(self.nodes) * ind
+        # int_pk = random.randint(0, (2 ** 32))
+        int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
+        self.node_keys_sorted.append(int_pk)
+        node.overlay.initialize_routing_table(int_pk)
+
     async def start_ipv8_nodes(self) -> None:
         await super().start_ipv8_nodes()
 
         # Initialize the routing tables of each node after starting the IPv8 nodes.
-        for ind, node in enumerate(self.nodes):
-            # Create a hash from the PK
-            h = hashlib.md5()
-            h.update(node.overlay.my_peer.public_key.key_to_bin())
-            #int_pk = (2 ** 32) // len(self.nodes) * ind
-            #int_pk = random.randint(0, (2 ** 32))
-            int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
-            self.node_keys_sorted.append(int_pk)
-            node.overlay.initialize_routing_table(int_pk)
+        for node in self.nodes:
+            self.initialize_routing_table(node)
 
         self.node_keys_sorted = sorted(self.node_keys_sorted)
 
     async def on_ipv8_ready(self) -> None:
+        # Initialize the key to node map and target frequency map
+        for ind, node in enumerate(self.nodes):
+            self.key_to_node_ind[node.overlay.routing_table.key] = ind
+            self.target_frequency[ind] = 0
+
+        # Reset all search hops statistics (since introduction will also conduct a search)
+        for node in self.nodes:
+            node.overlay.search_hops = {}
+            node.overlay.search_latencies = []
+
         # Nodes are now joining the Skip Graph.
         # For better performance and load balancing, we keep track of the nodes that have already joined, and the
         # nodes that still need to join. We choose a random node that already joined as introducer peer.
@@ -115,3 +156,9 @@ class SkipgraphSimulation(BamiSimulation):
             for node in self.nodes:
                 for latency in node.overlay.search_latencies:
                     latencies_file.write("%d,%f\n" % (self.settings.peers, latency))
+
+        # Write statistics on search targets
+        with open(os.path.join(self.data_dir, "search_targets.csv"), "w") as out_file:
+            out_file.write("peer,target_count\n")
+            for peer_id, target_count in self.target_frequency.items():
+                out_file.write("%d,%d\n" % (peer_id, target_count))

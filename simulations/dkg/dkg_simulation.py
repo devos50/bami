@@ -72,8 +72,6 @@ class DKGSimulation(SkipgraphSimulation):
             ensure_future(do_search(random.random() * 20, random_node, content_hash))
 
     def on_simulation_finished(self):
-        super().on_simulation_finished()
-
         # Write away the knowledge graph statistics per node
         with open(os.path.join(self.data_dir, "kg_stats.csv"), "w") as out_file:
             out_file.write("peer,num_edges\n")
