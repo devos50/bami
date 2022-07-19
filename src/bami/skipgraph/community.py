@@ -84,9 +84,9 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(SearchPayload)
     def on_search_request(self, peer: Peer, payload: SearchPayload):
-        self.logger.info("Peer %s received search request from peer %s for key %d (start at level %d)",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
-                         payload.search_key, payload.level)
+        self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d)",
+                         self.get_my_short_id(), self.routing_table.key,
+                         self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level)
 
         originator_node = SGNode.from_payload(payload.originator)
 
@@ -105,6 +105,7 @@ class SkipGraphCommunity(Community):
                     best_node = cached_node
 
         if self.routing_table.key < payload.search_key:
+            # Search to the right
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
                 neighbour = self.routing_table.get(level, RIGHT)
@@ -115,6 +116,8 @@ class SkipGraphCommunity(Community):
 
                     response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
                                                      level, payload.hops + 1)
+                    self.logger.debug("Right-routing search request for %d to peer %s (key %d)", payload.search_key,
+                                      self.get_short_id(send_to.public_key), send_to.key)
                     self.ez_send(send_to.get_peer(), response_payload)
 
                     # Also send a message back to the node that sent us the search request
@@ -125,11 +128,12 @@ class SkipGraphCommunity(Community):
                     level -= 1
 
             # We exhausted our search to the right - return ourselves as result to the search originator
-            self.logger.debug("Peer %s exhausted search to the right - returning self as search result",
-                              self.get_my_short_id())
+            self.logger.debug("Peer %s (key: %d) exhausted search to the right - returning self as search result",
+                              self.get_my_short_id(), self.routing_table.key)
             response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
         else:
+            # Search to the left
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
                 neighbour = self.routing_table.get(level, LEFT)
@@ -140,18 +144,23 @@ class SkipGraphCommunity(Community):
 
                     response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
                                                      level, payload.hops + 1)
+                    self.logger.debug("Left-routing search request for %d to peer %s (key %d)", payload.search_key,
+                                      self.get_short_id(send_to.public_key), send_to.key)
                     self.ez_send(send_to.get_peer(), response_payload)
                     return
                 else:
                     level -= 1
 
-            # Search on the left level exhausted - return the left neighbour at level 0
+            # Search to the left exhausted - pass on the search to the left neighbour
             left_neighbour = self.routing_table.get(0, LEFT)
             if left_neighbour:
-                self.logger.debug("Peer %s exhausted search - returning left neighbour as search result",
-                                  self.get_my_short_id())
-                response_payload = SearchResponsePayload(payload.identifier, left_neighbour.to_payload(), payload.hops)
-                self.ez_send(originator_node.get_peer(), response_payload)
+                self.logger.debug("Peer %s (key %d) exhausted search - returning left neighbour as search result",
+                                  self.get_my_short_id(), self.routing_table.key)
+                response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
+                                                 0, payload.hops + 1)
+                self.logger.debug("Left-routing search request for %d to peer %s (key %d)", payload.search_key,
+                                  self.get_short_id(left_neighbour.public_key), left_neighbour.key)
+                self.ez_send(left_neighbour.get_peer(), response_payload)
             else:
                 # We also don't have a left neighbour - return ourselves as last resort
                 response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(),

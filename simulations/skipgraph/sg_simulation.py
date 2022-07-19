@@ -19,6 +19,7 @@ class SkipgraphSimulation(BamiSimulation):
         self.searches_done = 0
         self.target_frequency: Dict[int, int] = {}
         self.key_to_node_ind: Dict[int, int] = {}
+        self.invalid_searches = 0
 
     async def do_search(self, delay, node, search_key):
         await sleep(delay)
@@ -35,8 +36,13 @@ class SkipgraphSimulation(BamiSimulation):
             if res_ind == len(self.node_keys_sorted) - 1:
                 assert search_key > res_ind
             else:
-                assert res.key <= search_key and self.node_keys_sorted[res_ind + 1] > search_key, \
-                    "Result: %d search key: %d" % (res.key, search_key)
+                assert res.key <= search_key, "Result key (%d) should be less " \
+                                              "than or equal to search key (%d)" % (res.key, search_key)
+                if self.node_keys_sorted[res_ind + 1] <= search_key:
+                    self.invalid_searches += 1
+                # assert self.node_keys_sorted[res_ind + 1] > search_key,\
+                #     "Better result possible (%d), result: %d search key: %d" % \
+                #     (self.node_keys_sorted[res_ind + 1], res.key, search_key)
 
         self.target_frequency[self.key_to_node_ind[res.key]] += 1
 

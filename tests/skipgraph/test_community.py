@@ -1,12 +1,10 @@
-from asyncio import ensure_future
-
 from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
 from bami.skipgraph.util import verify_skip_graph_integrity
-from ipv8.messaging.interfaces.udp.endpoint import UDPv4Address
 
+from ipv8.messaging.interfaces.udp.endpoint import UDPv4Address
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
 
@@ -128,8 +126,7 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
             for ind, node in enumerate(self.nodes):
                 node.overlay.logger.error("=== RT node %d (key: %d) ===\n%s", ind, node.overlay.routing_table.key, node.overlay.routing_table)
 
-            if not verify_skip_graph_integrity(self.nodes):
-                assert False, "Skip graph invalid!"
+            assert verify_skip_graph_integrity(self.nodes)
             self.assert_not_self_in_rt()
 
     async def test_leave(self):
@@ -150,15 +147,13 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
         assert self.nodes[1].overlay.routing_table.get(0, RIGHT).key == 36
         assert self.nodes[3].overlay.routing_table.get(0, LEFT).key == 21
 
-        if not verify_skip_graph_integrity(self.nodes):
-            assert False, "Skip graph invalid!"
+        assert verify_skip_graph_integrity(self.nodes)
 
         # Let the other nodes leave
         await self.nodes[1].overlay.leave()
         await self.nodes[3].overlay.leave()
 
-        if not verify_skip_graph_integrity(self.nodes):
-            assert False, "Skip graph invalid!"
+        assert verify_skip_graph_integrity(self.nodes)
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
