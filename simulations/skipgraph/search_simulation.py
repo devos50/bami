@@ -13,6 +13,11 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
 
+        # Reset all search hops statistics (since introduction will also conduct a search)
+        for node in self.nodes:
+            node.overlay.search_hops = {}
+            node.overlay.search_latencies = []
+
         # Schedule some searches
         for _ in range(1000):
             random_node = random.choice(self.nodes)

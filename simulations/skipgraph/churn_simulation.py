@@ -21,6 +21,13 @@ class ChurnSkipgraphSimulation(SkipgraphSimulation):
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
 
+        # Reset all search hops statistics (since introduction will also conduct a search)
+        print("Resetting churn statistics")
+        for node in self.nodes:
+            node.overlay.search_hops = {}
+            node.overlay.search_latencies = []
+            node.overlay.join_latencies = []
+
         for ind in range(len(self.nodes)):
             self.active_node_ids.add(ind)
 
@@ -82,8 +89,8 @@ class ChurnSkipgraphSimulation(SkipgraphSimulation):
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.peers = 100
-    settings.duration = 1800
+    settings.peers = 1000
+    settings.duration = 3600
     settings.logging_level = "ERROR"
     settings.profile = False
     settings.enable_community_statistics = True

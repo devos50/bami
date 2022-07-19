@@ -54,7 +54,9 @@ class SkipGraphCommunity(Community):
         self.add_message_handler(SetNeighbourNilPayload, self.on_set_neighbour_nil)
 
         self.search_hops: Dict[int, int] = {}  # Keep track of the number of hops per search
-        self.search_latencies: List[int] = []  # Keep track of the latency of individual searches
+        self.search_latencies: List[float] = []  # Keep track of the latency of individual searches
+        self.join_latencies: List[float] = []    # Keep track of the latency of join operations
+        self.leave_latencies: List[float] = []   # Keep track of the latency of leave operations
 
         self.is_leaving: bool = False  # Whether we are leaving the Skip Graph
 
@@ -310,6 +312,7 @@ class SkipGraphCommunity(Community):
         """
         Join the Skip Graph.
         """
+        start_time = get_event_loop().time()
         self.logger.info("Peer %s joining the Skip Graph (key: %d, mv: %s)",
                          self.get_my_short_id(), self.routing_table.key, self.routing_table.mv)
         if not introducer_peer:
@@ -386,6 +389,7 @@ class SkipGraphCommunity(Community):
                 break
 
         self.routing_table.max_level = level
+        self.join_latencies.append(get_event_loop().time() - start_time)
         self.logger.info("Peer %s has joined the Skip Graph!", self.get_my_short_id())
 
     async def leave(self) -> bool:
@@ -427,6 +431,7 @@ class SkipGraphCommunity(Community):
         self.logger.info("Peer %s left the Skip Graph", self.get_my_short_id())
         self.is_leaving = False
         self.routing_table = None
+        self.leave_latencies.append(get_event_loop().time() - start_time)
         return True
 
     async def find_new_neighbour(self, level: int) -> Optional[SGNode]:
