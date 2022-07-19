@@ -7,13 +7,13 @@ from typing import Dict
 from bami.skipgraph.util import verify_skip_graph_integrity
 from ipv8.configuration import ConfigBuilder
 
-from simulations.settings import SimulationSettings
 from simulations.simulation import BamiSimulation
+from simulations.skipgraph.settings import SkipGraphSimulationSettings
 
 
 class SkipgraphSimulation(BamiSimulation):
 
-    def __init__(self, settings: SimulationSettings) -> None:
+    def __init__(self, settings: SkipGraphSimulationSettings) -> None:
         super().__init__(settings)
         self.node_keys_sorted = []
         self.searches_done = 0
@@ -72,6 +72,10 @@ class SkipgraphSimulation(BamiSimulation):
         for node in self.nodes:
             self.initialize_routing_table(node)
 
+        # Apply the appropriate settings
+        for node in self.nodes:
+            node.overlay.cache_search_responses = self.settings.cache_intermediate_search_results
+
         self.node_keys_sorted = sorted(self.node_keys_sorted)
 
     async def on_ipv8_ready(self) -> None:
@@ -115,6 +119,7 @@ class SkipgraphSimulation(BamiSimulation):
         """
         The experiment is finished. Write the results away.
         """
+        caching = "yes" if self.settings.cache_intermediate_search_results else "no"
 
         # Bandwidth statistics
         # with open(os.path.join(self.data_dir, "bw_usage.csv"), "w") as bw_file:
@@ -141,22 +146,22 @@ class SkipgraphSimulation(BamiSimulation):
                 hops_freq[num_hops] += freq
 
         with open(os.path.join(self.data_dir, "search_hops.csv"), "w") as search_hops_file:
-            search_hops_file.write("peers,hops,freq\n")
+            search_hops_file.write("peers,hops,freq,caching\n")
             for num_hops, freq in hops_freq.items():
-                search_hops_file.write("%d,%d,%d\n" % (self.settings.peers, num_hops, freq))
+                search_hops_file.write("%d,%d,%d,%s\n" % (self.settings.peers, num_hops, freq, caching))
 
         # Search latencies
         with open(os.path.join(self.data_dir, "latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,operation,time\n")
+            latencies_file.write("peers,operation,time,caching\n")
             for node in self.nodes:
                 for latency in node.overlay.search_latencies:
-                    latencies_file.write("%d,%s,%f\n" % (self.settings.peers, "search", latency))
+                    latencies_file.write("%d,%s,%f,%s\n" % (self.settings.peers, "search", latency, caching))
 
                 for latency in node.overlay.join_latencies:
-                    latencies_file.write("%d,%s,%f\n" % (self.settings.peers, "join", latency))
+                    latencies_file.write("%d,%s,%f,%s\n" % (self.settings.peers, "join", latency, caching))
 
                 for latency in node.overlay.leave_latencies:
-                    latencies_file.write("%d,%s,%f\n" % (self.settings.peers, "leave", latency))
+                    latencies_file.write("%d,%s,%f,%s\n" % (self.settings.peers, "leave", latency, caching))
 
         # Write statistics on search targets
         with open(os.path.join(self.data_dir, "search_targets.csv"), "w") as out_file:

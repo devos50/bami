@@ -1,7 +1,7 @@
 import random
 from asyncio import get_event_loop
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Set
 
 from ipv8.util import fail
 
@@ -13,7 +13,7 @@ from bami.skipgraph.node import SGNode
 from bami.skipgraph.payload import SearchPayload, SearchResponsePayload, NodeInfoPayload, NeighbourRequestPayload, \
     NeighbourResponsePayload, GetLinkPayload, SetLinkPayload, \
     BuddyPayload, DeletePayload, NoNeighbourPayload, FindNewNeighbourPayload, ConfirmDeletePayload, \
-    FoundNewNeighbourPayload, SetNeighbourNilPayload
+    FoundNewNeighbourPayload, SetNeighbourNilPayload, SearchIntermediateResponsePayload
 from bami.skipgraph.routing_table import RoutingTable
 from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
@@ -35,8 +35,10 @@ class SkipGraphCommunity(Community):
 
         self.request_cache = RequestCache()
 
-        self.add_message_handler(SearchPayload.msg_id, self.on_search_request)
+        # Search messages
+        self.add_message_handler(SearchPayload, self.on_search_request)
         self.add_message_handler(SearchResponsePayload, self.on_search_response)
+        self.add_message_handler(SearchIntermediateResponsePayload, self.on_search_intermediate_response)
 
         # Join messages
         self.add_message_handler(NeighbourRequestPayload, self.on_neighbour_request)
@@ -59,6 +61,9 @@ class SkipGraphCommunity(Community):
         self.leave_latencies: List[float] = []   # Keep track of the latency of leave operations
 
         self.is_leaving: bool = False  # Whether we are leaving the Skip Graph
+
+        self.cache_search_responses: bool = True  # Whether we cache intermediate search responses
+        self.cached_nodes: Set[SGNode] = set()
 
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
 
@@ -90,14 +95,31 @@ class SkipGraphCommunity(Community):
             response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
             return
-        elif self.routing_table.key < payload.search_key:
+
+        # If we have caching enabled, route the search to the closest node in the cache
+        best_node: Optional[SGNode] = None
+        if self.cache_search_responses and self.cached_nodes:
+            # Check if we have a node that is close to the target node
+            for cached_node in self.cached_nodes:
+                if not best_node or abs(cached_node.key - payload.search_key) < abs(best_node.key - payload.search_key):
+                    best_node = cached_node
+
+        if self.routing_table.key < payload.search_key:
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
                 neighbour = self.routing_table.get(level, RIGHT)
                 if neighbour and neighbour.key <= payload.search_key:
+                    send_to = neighbour
+                    if best_node and abs(best_node.key - payload.search_key) < abs(neighbour.key - payload.search_key):
+                        send_to = best_node
+
                     response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
                                                      level, payload.hops + 1)
-                    self.ez_send(neighbour.get_peer(), response_payload)
+                    self.ez_send(send_to.get_peer(), response_payload)
+
+                    # Also send a message back to the node that sent us the search request
+                    response_payload = SearchIntermediateResponsePayload(neighbour.to_payload())
+                    self.ez_send(peer, response_payload)
                     return
                 else:
                     level -= 1
@@ -112,9 +134,13 @@ class SkipGraphCommunity(Community):
             while level >= 0:
                 neighbour = self.routing_table.get(level, LEFT)
                 if neighbour and neighbour.key >= payload.search_key:
+                    send_to = neighbour
+                    if best_node and abs(best_node.key - payload.search_key) < abs(neighbour.key - payload.search_key):
+                        send_to = best_node
+
                     response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
                                                      level, payload.hops + 1)
-                    self.ez_send(neighbour.get_peer(), response_payload)
+                    self.ez_send(send_to.get_peer(), response_payload)
                     return
                 else:
                     level -= 1
@@ -151,6 +177,19 @@ class SkipGraphCommunity(Community):
 
         node = SGNode.from_payload(payload.response)
         cache.future.set_result(node)
+
+    @lazy_wrapper(SearchIntermediateResponsePayload)
+    def on_search_intermediate_response(self, peer: Peer, payload: SearchIntermediateResponsePayload):
+        if not self.cache_search_responses:
+            return
+
+        self.logger.info("Peer %s received intermediate search response from peer %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
+
+        node = SGNode.from_payload(payload.node)
+        if node not in self.cached_nodes:
+            self.logger.debug("Caching node %s", self.get_short_id(node.public_key))
+            self.cached_nodes.add(node)
 
     async def get_neighbour(self, peer: Peer, side: Direction, level: int) -> Optional[SGNode]:
         """

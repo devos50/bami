@@ -23,6 +23,13 @@ class SearchResponsePayload(VariablePayload):
 
 
 @vp_compile
+class SearchIntermediateResponsePayload(VariablePayload):
+    msg_id = 4
+    names = ['node']
+    format_list = [NodeInfoPayload]
+
+
+@vp_compile
 class NeighbourRequestPayload(VariablePayload):
     msg_id = 6
     names = ['identifier', 'side', 'level']

@@ -4,7 +4,7 @@ Simulation that initiates a number of searches in the Skip Graph.
 import random
 from asyncio import ensure_future
 
-from simulations.settings import SimulationSettings
+from simulations.skipgraph.settings import SkipGraphSimulationSettings
 from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
 
@@ -19,20 +19,21 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
             node.overlay.search_latencies = []
 
         # Schedule some searches
-        for _ in range(1000):
+        for _ in range(10000):
             random_node = random.choice(self.nodes)
             ensure_future(self.do_search(random.random() * 20, random_node, random.randint(0, 2 ** 32)))
 
 
 if __name__ == "__main__":
-    settings = SimulationSettings()
-    settings.peers = 100
+    settings = SkipGraphSimulationSettings()
+    settings.peers = 1000
     settings.duration = 30
     settings.logging_level = "ERROR"
     settings.profile = False
     settings.enable_community_statistics = True
     settings.enable_ipv8_ticker = False
     settings.latencies_file = "data/latencies.txt"
+    settings.cache_intermediate_search_results = False
     simulation = SearchSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 
