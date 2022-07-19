@@ -38,3 +38,18 @@ class TestDKGCommunity(TestSkipGraphCommunityBase):
         # Test searching locally
         triplets = await self.nodes[1].overlay.search_edges(b"abcdefg")
         assert len(triplets) == 1
+
+    async def test_storage_request(self):
+        """
+        Test sending storage requests.
+        """
+        await self.introduce_nodes()
+        await self.nodes[1].overlay.join(introducer_peer=self.nodes[0].overlay.my_peer)
+
+        target_node = self.nodes[0].overlay.get_my_node()
+        assert await self.nodes[0].overlay.send_storage_request(target_node, Content(b"", b""))
+        assert not await self.nodes[0].overlay.send_storage_request(target_node, Content(b"\x01", b""))
+
+        target_node = self.nodes[1].overlay.get_my_node()
+        assert not await self.nodes[1].overlay.send_storage_request(target_node, Content(b"", b""))
+        assert await self.nodes[1].overlay.send_storage_request(target_node, Content(b"\x01", b""))

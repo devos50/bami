@@ -11,30 +11,30 @@ class TripletPayload:
     signatures: List[Tuple[bytes, bytes]]
 
 
-@dataclass(msg_id=11)
+@dataclass(msg_id=20)
 class TripletMessage:
     triplet: TripletPayload
 
 
-@dataclass(msg_id=12)
+@dataclass(msg_id=21)
 class StorageRequestPayload:
     identifier: int
     key: int
 
 
-@dataclass(msg_id=13)
+@dataclass(msg_id=22)
 class StorageResponsePayload:
     identifier: int
     response: bool
 
 
-@dataclass(msg_id=14)
+@dataclass(msg_id=23)
 class TripletsRequestPayload:
     identifier: int
     content: bytes
 
 
-@dataclass(msg_id=15)
+@dataclass(msg_id=24)
 class TripletsResponsePayload:
     identifier: int
     content: bytes
@@ -42,7 +42,7 @@ class TripletsResponsePayload:
     triplet: TripletPayload
 
 
-@dataclass(msg_id=16)
+@dataclass(msg_id=25)
 class TripletsEmptyResponsePayload:
     identifier: int
     content: bytes

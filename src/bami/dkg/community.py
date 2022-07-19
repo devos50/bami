@@ -4,6 +4,7 @@ from typing import List
 
 from bami.dkg.cache import StorageRequestCache, TripletsRequestCache
 from bami.dkg.content import Content
+from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 
 from bami.dkg.payloads import TripletMessage, StorageRequestPayload, StorageResponsePayload, TripletsRequestPayload, \
@@ -131,8 +132,18 @@ class DKGCommunity(SkipGraphCommunity):
         response = await cache.future
         return response
 
-    def should_store(self, content_key) -> bool:
-        # TODO we should probably do some verification here, e.g., if this node is the designated node to store it (by checking the right neighbour in the SG)
+    def should_store(self, content_key: int) -> bool:
+        """
+        Determine whether we should store this data element by checking the proximity in the Skip Graph.
+        """
+        ln: SGNode = self.routing_table.get(0, LEFT)
+        if ln and content_key <= ln.key:
+            return False  # A neighbour to the left should actually store this
+
+        rn: SGNode = self.routing_table.get(0, RIGHT)
+        if rn and content_key >= rn.key:
+            return False  # A neighbour to the right should actually store this
+
         return True
 
     @lazy_wrapper(StorageRequestPayload)
