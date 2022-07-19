@@ -19,6 +19,7 @@ class TripletMessage:
 @dataclass(msg_id=21)
 class StorageRequestPayload:
     identifier: int
+    content_identifier: bytes
     key: int
 
 

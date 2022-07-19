@@ -1,8 +1,17 @@
+from typing import List
+
 from bami.dkg.community import DKGCommunity
 from bami.dkg.content import Content
 from bami.dkg.db.triplet import Triplet
+from bami.skipgraph.util import verify_skip_graph_integrity
 
 from tests.skipgraph.test_community import TestSkipGraphCommunityBase
+
+
+class CustomKeyContent(Content):
+
+    def get_keys(self, num_keys: int = 1) -> List[int]:
+        return [int.from_bytes(self.identifier, 'big') % (2 ** 32)]
 
 
 class TestDKGCommunity(TestSkipGraphCommunityBase):
@@ -13,6 +22,7 @@ class TestDKGCommunity(TestSkipGraphCommunityBase):
         super(TestDKGCommunity, self).setUp()
 
         for node in self.nodes:
+            node.overlay.should_verify_key = False
             node.overlay.start_rule_execution_engine()
 
     async def test_store_graph_node(self):
@@ -45,11 +55,15 @@ class TestDKGCommunity(TestSkipGraphCommunityBase):
         """
         await self.introduce_nodes()
         await self.nodes[1].overlay.join(introducer_peer=self.nodes[0].overlay.my_peer)
+        assert verify_skip_graph_integrity(self.nodes)
+
+        content1 = CustomKeyContent(b"", b"")
+        content2 = CustomKeyContent(b"\x01", b"")
 
         target_node = self.nodes[0].overlay.get_my_node()
-        assert await self.nodes[0].overlay.send_storage_request(target_node, Content(b"", b""))
-        assert not await self.nodes[0].overlay.send_storage_request(target_node, Content(b"\x01", b""))
+        assert await self.nodes[0].overlay.send_storage_request(target_node, content1.identifier, content1.get_keys(1)[0])
+        assert not await self.nodes[1].overlay.send_storage_request(target_node, content2.identifier, content2.get_keys(1)[0])
 
         target_node = self.nodes[1].overlay.get_my_node()
-        assert not await self.nodes[1].overlay.send_storage_request(target_node, Content(b"", b""))
-        assert await self.nodes[1].overlay.send_storage_request(target_node, Content(b"\x01", b""))
+        assert not await self.nodes[1].overlay.send_storage_request(target_node, content1.identifier, content1.get_keys(1)[0])
+        assert await self.nodes[1].overlay.send_storage_request(target_node, content2.identifier, content2.get_keys(1)[0])

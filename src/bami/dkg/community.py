@@ -1,6 +1,6 @@
 from asyncio import get_event_loop
-from binascii import unhexlify
-from typing import List
+from binascii import unhexlify, hexlify
+from typing import List, Optional
 
 from bami.dkg.cache import StorageRequestCache, TripletsRequestCache
 from bami.dkg.content import Content
@@ -39,6 +39,9 @@ class DKGCommunity(SkipGraphCommunity):
         self.add_message_handler(TripletsRequestPayload, self.on_triplets_request)
         self.add_message_handler(TripletsResponsePayload, self.on_triplets_response)
         self.add_message_handler(TripletsEmptyResponsePayload, self.on_empty_triplets_response)
+
+        self.replication_factor = 1  # TODO this should be a setting
+        self.should_verify_key: bool = True  # TODO this should be a setting
 
         self.logger.info("The DKG community started!")
 
@@ -107,35 +110,44 @@ class DKGCommunity(SkipGraphCommunity):
             self.logger.info("Content generated no triplets - won't send out storage requests")
             return
 
-        # TODO should we also store the other end of an edge on the respective node?
-        target_node = await self.search(content.get_key())
-        if not target_node:
-            self.logger.warning("Search node with key %d failed and returned nothing - bailing out.", content.get_key())
-            return
+        content_keys: List[int] = content.get_keys(self.replication_factor)
+        for ind in range(self.replication_factor):
+            target_node: Optional[SGNode] = await self.search(content_keys[ind])
+            if not target_node:
+                self.logger.warning("Search node with key %d failed and returned nothing - bailing out.",
+                                    content_keys[ind])
+                return
 
-        # Send a storage request to the target node.
-        # TODO send to parallel nodes for replication + let the receiver verify whether it is actually responsible
-        response = await self.send_storage_request(target_node, content)
-        if response:
-            # Store the triplets on this peer
-            # TODO we should probably use EVA here instead of sending individual Triplet messages
-            for triplet in triplets:
-                self.ez_send(target_node.get_peer(), TripletMessage(triplet.to_payload()))
-        else:
-            self.logger.warning("Peer %s refused storage request for key %d",
-                                target_node.public_key.key_to_bin(), content.get_key())
+            # Send a storage request to the target node.
+            response = await self.send_storage_request(target_node, content.identifier, content_keys[ind])
+            if response:
+                # Store the triplets on this peer
+                # TODO we should probably use EVA here instead of sending individual Triplet messages
+                for triplet in triplets:
+                    self.ez_send(target_node.get_peer(), TripletMessage(triplet.to_payload()))
+            else:
+                self.logger.warning("Peer %s refused storage request for key %d",
+                                    self.get_short_id(target_node.public_key), content_keys[ind])
 
-    async def send_storage_request(self, target_node: SGNode, content: Content) -> bool:
+    async def send_storage_request(self, target_node: SGNode, content_identifier: bytes, key: int) -> bool:
         cache = StorageRequestCache(self)
         self.request_cache.add(cache)
-        self.ez_send(target_node.get_peer(), StorageRequestPayload(cache.number, content.get_key()))
+        self.ez_send(target_node.get_peer(), StorageRequestPayload(cache.number, content_identifier, key))
         response = await cache.future
         return response
 
-    def should_store(self, content_key: int) -> bool:
+    def should_store(self, content_identifier: bytes, content_key: int) -> bool:
         """
         Determine whether we should store this data element by checking the proximity in the Skip Graph.
         """
+
+        # Check that the content key is derived from the content identifier
+        if self.should_verify_key and not Content.verify_key(content_identifier, content_key, self.replication_factor):
+            self.logger.warning("Key %d not generated from content with ID %s!",
+                                content_key, hexlify(content_identifier).decode())
+            return False
+
+        # Verify whether we are responsible for this key
         ln: SGNode = self.routing_table.get(0, LEFT)
         if ln and content_key <= ln.key:
             return False  # A neighbour to the left should actually store this
@@ -150,7 +162,7 @@ class DKGCommunity(SkipGraphCommunity):
     def on_storage_request(self, peer: Peer, payload: StorageRequestPayload):
         self.logger.info("Peer %s received storage request from peer %s for key %d",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.key)
-        response = self.should_store(payload.key)
+        response = self.should_store(payload.content_identifier, payload.key)
         self.ez_send(peer, StorageResponsePayload(payload.identifier, response))
 
     @lazy_wrapper(StorageResponsePayload)
