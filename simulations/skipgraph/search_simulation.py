@@ -37,19 +37,19 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
             node.overlay.search_hops = {}
             node.overlay.search_latencies = []
 
-        self.invalidate_skip_graph(200)
+        self.invalidate_skip_graph(10)
 
         # Schedule some searches
         for _ in range(1000):
             random_node = random.choice(self.nodes)
             await self.do_search(0, random_node, random.randint(0, 2 ** 32))
 
-        print(self.invalid_searches)
+        print("Searches with incorrect result: %d" % self.invalid_searches)
 
 
 if __name__ == "__main__":
     settings = SkipGraphSimulationSettings()
-    settings.peers = 1000
+    settings.peers = 100
     settings.duration = 3600
     settings.logging_level = "ERROR"
     settings.profile = False

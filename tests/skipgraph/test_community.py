@@ -13,6 +13,12 @@ class TestSkipGraphCommunityBase(TestBase):
     NUM_NODES = 2
     COMMUNITY = SkipGraphCommunity
 
+    def get_node_with_key(self, key: int):
+        for node in self.nodes:
+            if node.overlay.routing_table.key == key:
+                return node
+        return None
+
     def initialize_routing_tables(self, nodes_info):
         for ind, node_info in enumerate(nodes_info):
             # Pad the list until we have sufficient bits
@@ -114,6 +120,10 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
 
         self.initialize_routing_tables(nodes_info)
 
+        # Disable caching
+        for node in self.nodes:
+            node.overlay.cache_search_responses = False
+
     async def test_join(self):
         """
         Test constructing a Skip Graph with four node.
@@ -138,8 +148,7 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
         for node in self.nodes[1:]:
             await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
 
-        if not verify_skip_graph_integrity(self.nodes):
-            assert False, "Skip graph invalid!"
+        assert verify_skip_graph_integrity(self.nodes)
 
         await self.nodes[2].overlay.leave()
 
@@ -154,6 +163,24 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
         await self.nodes[3].overlay.leave()
 
         assert verify_skip_graph_integrity(self.nodes)
+
+    async def test_search(self):
+        """
+        Test constructing a Skip Graph with four node.
+        """
+        await self.introduce_nodes()
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+
+        # These searches should be routed as follows: 21 -> 33 -> 21
+        res: SGNode = await self.get_node_with_key(99).overlay.search(21)
+        assert res.key == 21
+        res: SGNode = await self.get_node_with_key(99).overlay.search(20)
+        assert res.key == 21
+
+        # This search should be routed as follows: 21 -> 33
+        res: SGNode = await self.get_node_with_key(99).overlay.search(34)
+        assert res.key == 33
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):

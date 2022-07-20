@@ -84,6 +84,10 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(SearchPayload)
     def on_search_request(self, peer: Peer, payload: SearchPayload):
+        """
+        Logic when receiving a search request.
+        Note that the logic is slightly modified according to https://github.com/abelab/sgsim/blob/main/src/sg.py#L328.
+        """
         self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d)",
                          self.get_my_short_id(), self.routing_table.key,
                          self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level)
@@ -151,7 +155,7 @@ class SkipGraphCommunity(Community):
                 else:
                     level -= 1
 
-            # Search to the left exhausted - pass on the search to the left neighbour
+            # Search to the left exhausted - return the left neighbour if it exists, otherwise return ourselves
             left_neighbour = self.routing_table.get(0, LEFT)
             if left_neighbour:
                 self.logger.debug("Peer %s (key %d) exhausted search - returning left neighbour as search result",

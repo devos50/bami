@@ -17,9 +17,9 @@ class SkipgraphSimulation(BamiSimulation):
         super().__init__(settings)
         self.node_keys_sorted = []
         self.searches_done = 0
+        self.invalid_searches = 0
         self.target_frequency: Dict[int, int] = {}
         self.key_to_node_ind: Dict[int, int] = {}
-        self.invalid_searches = 0
 
     async def do_search(self, delay, node, search_key):
         await sleep(delay)
@@ -29,22 +29,21 @@ class SkipgraphSimulation(BamiSimulation):
         if res.key not in self.node_keys_sorted:
             assert False, "We got a key result that is not registered in the Skip List!"
 
-        if search_key < self.node_keys_sorted[0]:
-            assert res.key == self.node_keys_sorted[0]
-        else:
+        search_result_is_correct = True
+        if search_key < self.node_keys_sorted[0] and res.key != self.node_keys_sorted[0]:
+            search_result_is_correct = False
+        elif search_key >= self.node_keys_sorted[0]:
             res_ind = self.node_keys_sorted.index(res.key)
             if res_ind == len(self.node_keys_sorted) - 1:
-                assert search_key > res_ind
+                if search_key <= res_ind:
+                    search_result_is_correct = False
             else:
-                assert res.key <= search_key, "Result key (%d) should be less " \
-                                              "than or equal to search key (%d)" % (res.key, search_key)
                 if self.node_keys_sorted[res_ind + 1] <= search_key:
-                    self.invalid_searches += 1
-                # assert self.node_keys_sorted[res_ind + 1] > search_key,\
-                #     "Better result possible (%d), result: %d search key: %d" % \
-                #     (self.node_keys_sorted[res_ind + 1], res.key, search_key)
+                    search_result_is_correct = False
 
         self.target_frequency[self.key_to_node_ind[res.key]] += 1
+        if not search_result_is_correct:
+            self.invalid_searches += 1
 
         self.searches_done += 1
         if self.searches_done % 100 == 0:
