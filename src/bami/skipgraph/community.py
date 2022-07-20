@@ -7,7 +7,7 @@ from ipv8.util import fail
 
 from bami.skipgraph import RIGHT, LEFT, Direction
 from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache, DeleteCache, \
-    FindNewNeighbourCache, SetNeighbourNilCache
+    FindNewNeighbourCache, SetNeighbourNilCache, SearchForwardRequestCache
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
 from bami.skipgraph.payload import SearchPayload, SearchResponsePayload, NodeInfoPayload, NeighbourRequestPayload, \
@@ -32,6 +32,7 @@ class SkipGraphCommunity(Community):
         super(SkipGraphCommunity, self).__init__(*args, **kwargs)
         self.peers_info: Dict[Peer, SGNode] = {}
         self.routing_table: Optional[RoutingTable] = None
+        self.is_offline: bool = False
 
         self.request_cache = RequestCache()
 
@@ -73,6 +74,16 @@ class SkipGraphCommunity(Community):
     def get_short_id(self, peer_pk: bytes) -> str:
         return hexlify(peer_pk).decode()[-8:]
 
+    def remove_node_from_cache(self, key: int):
+        to_remove: Optional[SGNode] = None
+        for node in self.cached_nodes:
+            if node.key == key:
+                to_remove = node
+                break
+
+        if to_remove:
+            self.cached_nodes.remove(to_remove)
+
     def initialize_routing_table(self, key: int, mv: Optional[MembershipVector] = None):
         mv = mv or MembershipVector()
         self.logger.info("Node %s initializing routing table with key %d and MV %s", self.get_my_short_id(), key, mv)
@@ -82,16 +93,37 @@ class SkipGraphCommunity(Community):
         my_pk = self.my_peer.public_key.key_to_bin()
         return SGNode(self.my_estimated_wan, my_pk, self.routing_table.key, self.routing_table.mv)
 
+    def forward_search(self, received_payload: SearchPayload, from_peer: Peer, to_node: SGNode, search_id: int, forward_id: int,
+                       originator: SGNode, search_key: int, level: int, hops: int):
+        self.logger.debug("Peer %s forwarding search request for %d to peer %s (key %d)",
+                          self.get_my_short_id(), search_key, self.get_short_id(to_node.public_key), to_node.key)
+
+        cache = SearchForwardRequestCache(self, received_payload, from_peer, to_node)
+        self.request_cache.add(cache)
+
+        response_payload = SearchPayload(search_id, cache.number, originator, search_key, level, hops)
+        self.ez_send(to_node.get_peer(), response_payload)
+
+        # Also send a message back to the node that sent us the search request
+        response_payload = SearchIntermediateResponsePayload(forward_id, to_node.to_payload())
+        self.ez_send(from_peer, response_payload)
+
     @lazy_wrapper(SearchPayload)
     def on_search_request(self, peer: Peer, payload: SearchPayload):
         """
         Logic when receiving a search request.
         Note that the logic is slightly modified according to https://github.com/abelab/sgsim/blob/main/src/sg.py#L328.
         """
+        if self.is_offline:
+            return
+
         self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d)",
                          self.get_my_short_id(), self.routing_table.key,
                          self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level)
 
+        self.handle_search_request(peer, payload)
+
+    def handle_search_request(self, peer: Peer, payload: SearchPayload):
         originator_node = SGNode.from_payload(payload.originator)
 
         if self.routing_table.key == payload.search_key:
@@ -118,15 +150,8 @@ class SkipGraphCommunity(Community):
                     if best_node and abs(best_node.key - payload.search_key) < abs(neighbour.key - payload.search_key):
                         send_to = best_node
 
-                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
-                                                     level, payload.hops + 1)
-                    self.logger.debug("Right-routing search request for %d to peer %s (key %d)", payload.search_key,
-                                      self.get_short_id(send_to.public_key), send_to.key)
-                    self.ez_send(send_to.get_peer(), response_payload)
-
-                    # Also send a message back to the node that sent us the search request
-                    response_payload = SearchIntermediateResponsePayload(neighbour.to_payload())
-                    self.ez_send(peer, response_payload)
+                    self.forward_search(payload, peer, send_to, payload.identifier, payload.forward_identifier,
+                                        payload.originator, payload.search_key, level, payload.hops + 1)
                     return
                 else:
                     level -= 1
@@ -136,6 +161,10 @@ class SkipGraphCommunity(Community):
                               self.get_my_short_id(), self.routing_table.key)
             response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
+
+            # Also send a message back to the node that sent us the search request
+            response_payload = SearchIntermediateResponsePayload(payload.forward_identifier, originator_node.to_payload())
+            self.ez_send(peer, response_payload)
         else:
             # Search to the left
             level = min(payload.level, self.routing_table.height() - 1)
@@ -146,11 +175,8 @@ class SkipGraphCommunity(Community):
                     if best_node and abs(best_node.key - payload.search_key) < abs(neighbour.key - payload.search_key):
                         send_to = best_node
 
-                    response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
-                                                     level, payload.hops + 1)
-                    self.logger.debug("Left-routing search request for %d to peer %s (key %d)", payload.search_key,
-                                      self.get_short_id(send_to.public_key), send_to.key)
-                    self.ez_send(send_to.get_peer(), response_payload)
+                    self.forward_search(payload, peer, send_to, payload.identifier, payload.forward_identifier,
+                                        payload.originator, payload.search_key, level, payload.hops + 1)
                     return
                 else:
                     level -= 1
@@ -160,19 +186,23 @@ class SkipGraphCommunity(Community):
             if left_neighbour:
                 self.logger.debug("Peer %s (key %d) exhausted search - returning left neighbour as search result",
                                   self.get_my_short_id(), self.routing_table.key)
-                response_payload = SearchPayload(payload.identifier, payload.originator, payload.search_key,
-                                                 0, payload.hops + 1)
-                self.logger.debug("Left-routing search request for %d to peer %s (key %d)", payload.search_key,
-                                  self.get_short_id(left_neighbour.public_key), left_neighbour.key)
-                self.ez_send(left_neighbour.get_peer(), response_payload)
+                self.forward_search(payload, peer, left_neighbour, payload.identifier, payload.forward_identifier,
+                                    payload.originator, payload.search_key, 0, payload.hops + 1)
             else:
                 # We also don't have a left neighbour - return ourselves as last resort
                 response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(),
                                                          payload.hops)
                 self.ez_send(originator_node.get_peer(), response_payload)
 
+                # Also send a message back to the node that sent us the search request
+                response_payload = SearchIntermediateResponsePayload(payload.forward_identifier, originator_node.to_payload())
+                self.ez_send(peer, response_payload)
+
     @lazy_wrapper(SearchResponsePayload)
     def on_search_response(self, peer: Peer, payload: SearchResponsePayload):
+        if self.is_offline:
+            return
+
         self.logger.info("Peer %s received search response from peer %s (resulting key: %d, hops: %d)",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
                          payload.response.key, payload.hops)
@@ -193,16 +223,39 @@ class SkipGraphCommunity(Community):
 
     @lazy_wrapper(SearchIntermediateResponsePayload)
     def on_search_intermediate_response(self, peer: Peer, payload: SearchIntermediateResponsePayload):
-        if not self.cache_search_responses:
+        if self.is_offline:
             return
 
         self.logger.info("Peer %s received intermediate search response from peer %s",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
 
-        node = SGNode.from_payload(payload.node)
-        if node not in self.cached_nodes:
-            self.logger.debug("Caching node %s", self.get_short_id(node.public_key))
-            self.cached_nodes.add(node)
+        if not self.request_cache.has("forward-search", payload.identifier):
+            self.logger.warning("forward-search cache with id %s not found", payload.identifier)
+            return
+
+        self.request_cache.pop("forward-search", payload.identifier)
+
+        if self.cache_search_responses:
+            node = SGNode.from_payload(payload.node)
+            if node not in self.cached_nodes:
+                self.logger.debug("Caching node %s", self.get_short_id(node.public_key))
+                self.cached_nodes.add(node)
+
+    def on_search_forward_timeout(self, cache: SearchForwardRequestCache):
+        """
+        The search forward failed and we have to find an alternative route.
+        """
+        self.logger.warning("Search forward cache with ID %d timed out - peer %s with key %d failed",
+                            cache.number, self.get_short_id(cache.to_node.public_key), cache.to_node.key)
+
+        # Remove the failing node from the routing table and the cache
+        self.routing_table.remove_node(cache.to_node.key)
+        self.remove_node_from_cache(cache.to_node.key)
+
+        # Initiate the search request again
+        self.handle_search_request(cache.from_peer, cache.payload)
+
+        # TODO we should start to replace this node with someone else
 
     async def get_neighbour(self, peer: Peer, side: Direction, level: int) -> Optional[SGNode]:
         """
@@ -251,22 +304,30 @@ class SkipGraphCommunity(Community):
         cache = self.request_cache.pop("neighbour", payload.identifier)
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
-    async def search(self, key: int, introducer_peer: Optional[Peer] = None) -> SGNode:
+    async def search(self, key: int, introducer_node: Optional[SGNode] = None) -> SGNode:
         self.logger.info("Peer %s initiating search for key %d", self.get_my_short_id(), key)
+
         cache = SearchRequestCache(self)
         self.request_cache.add(cache)
-        if introducer_peer:
-            self.ez_send(introducer_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
-                                                        key, self.routing_table.height() - 1, 0))
+
+        if introducer_node:
+            forward_cache = SearchForwardRequestCache(self, None, self.my_peer, self.get_my_node())
+            self.request_cache.add(forward_cache)
+            self.ez_send(introducer_node.get_peer(), SearchPayload(cache.number, forward_cache.number,
+                                                                   self.get_my_node().to_payload(),
+                                                                   key, self.routing_table.height() - 1, 0))
         else:
             if not self.routing_table:
                 self.logger.error("Routing table not initialized! Failing search")
                 return fail("Routing table not initialized!")
 
             # This is a regular search. Send a Search message to yourself to initiate the search.
-            self.ez_send(self.my_peer, SearchPayload(cache.number, self.get_my_node().to_payload(),
-                                                     key, self.routing_table.height() - 1, 0))
-            pass
+            payload = SearchPayload(cache.number, 0, self.get_my_node().to_payload(),
+                                    key, self.routing_table.height() - 1, 0)
+            forward_cache = SearchForwardRequestCache(self, payload, self.my_peer, self.get_my_node())
+            self.request_cache.add(forward_cache)
+            payload.forward_identifier = forward_cache.number
+            self.ez_send(self.my_peer, payload)
 
         response = await cache.future
         return response
@@ -384,7 +445,7 @@ class SkipGraphCommunity(Community):
                           self.get_my_short_id(), self.get_short_id(introducer_peer.public_key.key_to_bin()),
                           introducer_peer_info.key, introducer_peer_info.mv)
 
-        closest_neighbour = await self.search(self.routing_table.key, introducer_peer=introducer_peer)
+        closest_neighbour = await self.search(self.routing_table.key, introducer_node=introducer_peer_info)
         if closest_neighbour.key == self.routing_table.key:
             self.logger.warning("Node with key %d is already registered in the Skip Graph!", closest_neighbour.key)
             return

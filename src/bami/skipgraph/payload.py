@@ -11,8 +11,8 @@ class NodeInfoPayload(VariablePayload):
 @vp_compile
 class SearchPayload(VariablePayload):
     msg_id = 2
-    names = ['identifier', 'originator', 'search_key', 'level', 'hops']
-    format_list = ['I', NodeInfoPayload, 'I', 'I', 'I']
+    names = ['identifier', 'forward_identifier', 'originator', 'search_key', 'level', 'hops']
+    format_list = ['I', 'I', NodeInfoPayload, 'I', 'I', 'I']
 
 
 @vp_compile
@@ -25,8 +25,8 @@ class SearchResponsePayload(VariablePayload):
 @vp_compile
 class SearchIntermediateResponsePayload(VariablePayload):
     msg_id = 4
-    names = ['node']
-    format_list = [NodeInfoPayload]
+    names = ['identifier', 'node']
+    format_list = ['I', NodeInfoPayload]
 
 
 @vp_compile

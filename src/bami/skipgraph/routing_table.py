@@ -34,6 +34,19 @@ class RoutingTable:
         self.logger.debug("Node with key %d setting %s neighbour to %s at level %d", self.key, side_str, node, level)
         self.levels[level].neighbors[side] = node
 
+    def remove_node(self, key: int):
+        """
+        Remove the node with a particular key from the routing table, replacing it with None.
+        """
+        for lvl in range(self.height()):
+            ln = self.get(lvl, LEFT)
+            if ln and ln.key == key:
+                self.set(lvl, LEFT, None)
+
+            rn = self.get(lvl, RIGHT)
+            if rn and rn.key == key:
+                self.set(lvl, RIGHT, None)
+
     def height(self) -> int:
         """
         Return the height of the routing table, i.e., the number of levels.

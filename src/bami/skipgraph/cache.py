@@ -1,6 +1,9 @@
 from asyncio import Future, get_event_loop
 
-from ipv8.requestcache import RandomNumberCache
+from bami.skipgraph.node import SGNode
+from bami.skipgraph.payload import SearchPayload
+from ipv8.requestcache import RandomNumberCache, NumberCache
+from ipv8.types import Peer
 
 
 class NeighbourRequestCache(RandomNumberCache):
@@ -30,6 +33,27 @@ class SearchRequestCache(RandomNumberCache):
         super().__init__(community.request_cache, "search")
         self.future = Future()
         self.start_time = get_event_loop().time()
+
+
+class SearchForwardRequestCache(RandomNumberCache):
+    """
+    Cache to keep track of search forwards.
+    """
+    SEARCH_TIMEOUT = 1.0
+
+    def __init__(self, community, payload: SearchPayload, from_peer: Peer, to_node: SGNode):
+        super().__init__(community.request_cache, "forward-search")
+        self.community = community
+        self.payload = payload
+        self.from_peer: Peer = from_peer
+        self.to_node: SGNode = to_node
+
+    @property
+    def timeout_delay(self):
+        return self.SEARCH_TIMEOUT
+
+    def on_timeout(self):
+        self.community.on_search_forward_timeout(self)
 
 
 class DeleteCache(RandomNumberCache):

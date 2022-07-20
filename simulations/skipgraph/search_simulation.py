@@ -37,11 +37,16 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
             node.overlay.search_hops = {}
             node.overlay.search_latencies = []
 
-        self.invalidate_skip_graph(10)
+        online_nodes = [n for n in self.nodes]
+
+        #self.invalidate_skip_graph(10)
+        for node in random.sample(self.nodes, 10):
+            node.overlay.is_offline = True
+            online_nodes.remove(node)
 
         # Schedule some searches
         for _ in range(1000):
-            random_node = random.choice(self.nodes)
+            random_node = random.choice(online_nodes)
             await self.do_search(0, random_node, random.randint(0, 2 ** 32))
 
         print("Searches with incorrect result: %d" % self.invalid_searches)

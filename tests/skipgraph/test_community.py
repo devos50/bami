@@ -166,7 +166,7 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
 
     async def test_search(self):
         """
-        Test constructing a Skip Graph with four node.
+        Test searching in a Skip Graph with four node.
         """
         await self.introduce_nodes()
         for node in self.nodes[1:]:
@@ -181,6 +181,20 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
         # This search should be routed as follows: 21 -> 33
         res: SGNode = await self.get_node_with_key(99).overlay.search(34)
         assert res.key == 33
+
+    async def test_search_with_node_failure(self):
+        """
+        Test searching in a Skip Graph with four nodes and node failures.
+        """
+        await self.introduce_nodes()
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+
+        self.nodes[2].overlay.is_offline = True
+
+        # With node 33 not responding, we get node 36 as result.
+        res: SGNode = await self.get_node_with_key(99).overlay.search(21)
+        assert res.key == 36
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
