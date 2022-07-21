@@ -28,3 +28,13 @@ def test_get_triplets_of_node(knowledge_graph):
     knowledge_graph.add_triplet(Triplet(b"c", b"b", b"a"))
     triplets = knowledge_graph.get_triplets_of_node(b"a")
     assert len(triplets) == 2
+
+
+def test_get_storage_costs(knowledge_graph):
+    knowledge_graph.add_triplet(Triplet(b"a", b"b", b"c"))
+    s1 = knowledge_graph.get_storage_costs()
+    assert s1
+
+    knowledge_graph.add_triplet(Triplet(b"abc", b"def", b"ghi"))
+    s2 = knowledge_graph.get_storage_costs()
+    assert s2 > s1

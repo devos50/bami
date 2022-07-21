@@ -110,9 +110,11 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Write away the knowledge graph statistics per node
         with open(os.path.join(self.data_dir, "kg_stats.csv"), "w") as out_file:
-            out_file.write("peer,num_edges\n")
+            out_file.write("peer,num_edges,storage_costs\n")
             for ind, node in enumerate(self.nodes):
-                out_file.write("%d,%d\n" % (ind, node.overlay.knowledge_graph.get_num_edges()))
+                num_edges = node.overlay.knowledge_graph.get_num_edges()
+                storage_costs = node.overlay.knowledge_graph.get_storage_costs()
+                out_file.write("%d,%d,%d\n" % (ind, num_edges, storage_costs))
 
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:

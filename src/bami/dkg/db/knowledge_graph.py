@@ -2,6 +2,7 @@ import random
 from typing import Set, List
 
 import networkx as nx
+from ipv8.messaging.serialization import default_serializer
 
 from bami.dkg.db.triplet import Triplet
 
@@ -58,3 +59,18 @@ class KnowledgeGraph:
 
     def get_num_edges(self) -> int:
         return len(self.graph.edges)
+
+    def get_storage_costs(self) -> int:
+        """
+        Compute the storage cost of the knowledge graph by serializing each Triplet into a Payload and summing
+        their lengths.
+        """
+        total_bytes = 0
+        for edge in self.graph.edges:
+            relation = self.graph.edges[edge]["attr"]["relation"]
+            triplet = Triplet(edge[0], relation, edge[1])
+            triplet.signatures = self.graph.edges[edge]["attr"]["signatures"]
+            triplet.rules = self.graph.edges[edge]["attr"]["rules"]
+            total_bytes += len(default_serializer.pack_serializable(triplet.to_payload()))
+
+        return total_bytes
