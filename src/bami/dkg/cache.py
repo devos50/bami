@@ -12,6 +12,13 @@ class StorageRequestCache(RandomNumberCache):
         self.future = Future()
 
 
+class IsStoringQueryCache(RandomNumberCache):
+
+    def __init__(self, community):
+        super().__init__(community.request_cache, "is-storing")
+        self.future = Future()
+
+
 # TODO no timeouts in this cache yet!
 class TripletsRequestCache(RandomNumberCache):
 

@@ -47,3 +47,22 @@ class TripletsResponsePayload:
 class TripletsEmptyResponsePayload:
     identifier: int
     content: bytes
+
+
+@dataclass(msg_id=26)
+class SearchFailurePayload:
+    content: bytes
+    key_index: int
+
+
+@dataclass(msg_id=27)
+class IsStoringQueryPayload:
+    identifier: int
+    content: bytes
+
+
+@dataclass(msg_id=28)
+class IsStoringResponsePayload:
+    identifier: int
+    content: bytes
+    storing: bool

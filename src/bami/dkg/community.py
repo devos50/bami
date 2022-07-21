@@ -3,13 +3,14 @@ from asyncio import get_event_loop
 from binascii import unhexlify, hexlify
 from typing import List, Optional
 
-from bami.dkg.cache import StorageRequestCache, TripletsRequestCache
+from bami.dkg.cache import StorageRequestCache, TripletsRequestCache, IsStoringQueryCache
 from bami.dkg.content import Content
 from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 
 from bami.dkg.payloads import TripletMessage, StorageRequestPayload, StorageResponsePayload, TripletsRequestPayload, \
-    TripletsResponsePayload, TripletsEmptyResponsePayload
+    TripletsResponsePayload, TripletsEmptyResponsePayload, SearchFailurePayload, IsStoringQueryPayload, \
+    IsStoringResponsePayload
 from bami.dkg.db.content_database import ContentDatabase
 from bami.dkg.db.knowledge_graph import KnowledgeGraph
 from bami.dkg.db.rules_database import RulesDatabase
@@ -40,9 +41,11 @@ class DKGCommunity(SkipGraphCommunity):
         self.add_message_handler(TripletsRequestPayload, self.on_triplets_request)
         self.add_message_handler(TripletsResponsePayload, self.on_triplets_response)
         self.add_message_handler(TripletsEmptyResponsePayload, self.on_empty_triplets_response)
+        self.add_message_handler(SearchFailurePayload, self.on_search_failure)
+        self.add_message_handler(IsStoringQueryPayload, self.on_is_storing_query)
+        self.add_message_handler(IsStoringResponsePayload, self.on_is_storing_response)
 
         self.replication_factor: int = 2  # TODO this should be a setting
-        self.search_parallelism: int = 2
         self.should_verify_key: bool = True  # TODO this should be a setting
 
         self.logger.info("The DKG community started!")
@@ -52,13 +55,17 @@ class DKGCommunity(SkipGraphCommunity):
         Query the network to fetch incoming/outgoing edges of the node labelled with the content hash.
         """
         start_time = get_event_loop().time()
-        content_keys: List[int] = Content.get_keys(content_hash, self.replication_factor)
+        content_keys: List[int] = Content.get_keys(content_hash, num_keys=self.replication_factor)
+        key_to_ind = {}
+        for ind, key in enumerate(content_keys):
+            key_to_ind[key] = ind
         random.shuffle(content_keys)  # For load balancing
 
         # TODO we probably want to send search queries in parallel
-        for attempt in range(self.search_parallelism):
+        failed_indices = []
+        for attempt in range(self.replication_factor):
             self.logger.info("Peer %s searching for edges (attempt %d/%d)" %
-                             (self.get_my_short_id(), attempt, self.search_parallelism))
+                             (self.get_my_short_id(), attempt, self.replication_factor))
             key = content_keys[attempt]
             target_node = await self.search(key)
             if not target_node:
@@ -74,7 +81,15 @@ class DKGCommunity(SkipGraphCommunity):
             self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
             triplets = await cache.future
             if triplets:
+                if failed_indices:
+                    # Inform the target node about our prior failed searches
+                    for failed_index in failed_indices:
+                        self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
+
                 return triplets
+            else:
+                # This node did not have the triplets we were looking for...
+                failed_indices.append(key_to_ind[key])
             self.edge_search_latencies.append(get_event_loop().time() - start_time)
         return []
 
@@ -121,7 +136,7 @@ class DKGCommunity(SkipGraphCommunity):
             self.logger.info("Content generated no triplets - won't send out storage requests")
             return
 
-        content_keys: List[int] = Content.get_keys(content.identifier, self.replication_factor)
+        content_keys: List[int] = Content.get_keys(content.identifier, num_keys=self.replication_factor)
         # TODO this should be done in parallel
         for ind in range(self.replication_factor):
             target_node: Optional[SGNode] = await self.search(content_keys[ind])
@@ -195,6 +210,68 @@ class DKGCommunity(SkipGraphCommunity):
         self.logger.info("Peer %s received triplet message from peer %s",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
         self.knowledge_graph.add_triplet(payload.triplet)
+
+    async def peer_is_storing_content(self, peer: Peer, content_hash: bytes) -> bool:
+        cache = IsStoringQueryCache(self)
+        self.request_cache.add(cache)
+        self.ez_send(peer, IsStoringQueryPayload(cache.number, content_hash))
+        response = await cache.future
+        return response
+
+    @lazy_wrapper(IsStoringQueryPayload)
+    def on_is_storing_query(self, peer: Peer, payload: IsStoringQueryPayload):
+        self.logger.info("Peer %s received storing query from peer %s for content %s",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         hexlify(payload.content).decode())
+        is_storing = payload.content in self.knowledge_graph.stored_content
+        self.ez_send(peer, IsStoringResponsePayload(payload.identifier, payload.content, is_storing))
+
+    @lazy_wrapper(IsStoringResponsePayload)
+    def on_is_storing_response(self, peer: Peer, payload: IsStoringResponsePayload):
+        self.logger.info("Peer %s received is storing response from peer %s (response: %s)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         bool(payload.storing))
+
+        if not self.request_cache.has("is-storing", payload.identifier):
+            self.logger.warning("is-storing cache with id %s not found", payload.identifier)
+            return
+
+        cache = self.request_cache.pop("is-storing", payload.identifier)
+        cache.future.set_result(payload.storing)
+
+    @lazy_wrapper(SearchFailurePayload)
+    async def on_search_failure(self, peer: Peer, payload: SearchFailurePayload):
+        """
+        A peer has informed us that a search for some content has failed for a particular index.
+        Check this and repair the damage if possible.
+        """
+        if payload.content not in self.knowledge_graph.stored_content:
+            self.logger.warning("Peer %s informed us of a failed search for content %s but we're not storing it!",
+                                self.get_short_id(peer.public_key.key_to_bin), hexlify(payload.content).decode())
+            return
+
+        if payload.key_index >= self.replication_factor:
+            self.logger.warning("Failed key index (%d) equal to or larger than the replication factor (%d)",
+                                payload.key_index, self.replication_factor)
+            return
+
+        content_keys = Content.get_keys(payload.content, num_keys=self.replication_factor)
+        failed_key = content_keys[payload.key_index]
+
+        target_node = await self.search(failed_key)
+        if not target_node:
+            self.logger.warning("Search node with failing key %d failed and returned nothing.", failed_key)
+            return
+
+        # TODO finish
+        is_storing = await self.peer_is_storing_content(target_node.get_peer(), payload.content)
+        if not is_storing:
+            # The node should store the triplets
+            response = await self.send_storage_request(target_node, payload.content, failed_key)
+            if response:
+                triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
+                for triplet in triplets:
+                    self.ez_send(target_node.get_peer(), TripletMessage(triplet.to_payload()))
 
     def start_rule_execution_engine(self):
         self.rule_execution_engine.start()
