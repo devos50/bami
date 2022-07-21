@@ -45,8 +45,8 @@ class DKGCommunity(SkipGraphCommunity):
         self.add_message_handler(IsStoringQueryPayload, self.on_is_storing_query)
         self.add_message_handler(IsStoringResponsePayload, self.on_is_storing_response)
 
-        self.replication_factor: int = 2  # TODO this should be a setting
-        self.should_verify_key: bool = True  # TODO this should be a setting
+        self.replication_factor: int = 2
+        self.should_verify_key: bool = True
 
         self.logger.info("The DKG community started!")
 

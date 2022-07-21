@@ -7,6 +7,7 @@ from typing import List
 from bami.dkg.content import Content
 from bami.dkg.rules.ptn import PTNRule
 from ipv8.configuration import ConfigBuilder
+from simulations.dkg.settings import DKGSimulationSettings
 from simulations.settings import SimulationSettings
 from simulations.skipgraph.settings import SkipGraphSimulationSettings
 
@@ -15,7 +16,7 @@ from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
 class DKGSimulation(SkipgraphSimulation):
 
-    def __init__(self, settings: SkipGraphSimulationSettings) -> None:
+    def __init__(self, settings: DKGSimulationSettings) -> None:
         super().__init__(settings)
         self.content_hashes: List[bytes] = []
         self.searches_done: int = 0
@@ -29,6 +30,10 @@ class DKGSimulation(SkipgraphSimulation):
 
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
+
+        # Set the replication factor
+        for node in self.nodes:
+            node.overlay.replication_factor = self.settings.replication_factor
 
         # Reset all search hops statistics (since introduction will also conduct a search)
         for node in self.nodes:
@@ -60,11 +65,14 @@ class DKGSimulation(SkipgraphSimulation):
         await sleep(20)  # Give some time to store the edges in the network
 
         # Take a few nodes offline
-        for node in random.sample(self.nodes, 50):
-            node.overlay.is_offline = True
-            self.online_nodes.remove(node)
+        if self.settings.offline_fraction > 0:
+            num_offline: int = int(len(self.nodes) * (self.settings.offline_fraction / 100))
+            print("Bringing %d nodes offline..." % num_offline)
+            for node in random.sample(self.nodes, num_offline):
+                node.overlay.is_offline = True
+                self.online_nodes.remove(node)
 
-        # Determine content that has generated edges - we do not want to search for content that has no edges
+        # Determine content that has generated edges - we do not want to search for content that has no triplets
         content_with_triplets = set()
         for node in self.online_nodes:
             content_with_triplets = content_with_triplets.union(node.overlay.knowledge_graph.stored_content)
