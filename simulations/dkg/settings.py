@@ -7,3 +7,4 @@ from simulations.skipgraph.settings import SkipGraphSimulationSettings
 class DKGSimulationSettings(SkipGraphSimulationSettings):
     replication_factor: int = 2
     offline_fraction: int = 0
+    data_file_name: str = "torrents_1000.txt"

@@ -48,8 +48,11 @@ class DKGSimulation(SkipgraphSimulation):
         # TODO hard-coded data file
         # Read the torrents data file and assign them to different nodes
         print("Processing torrents...")
-        with open("data/torrents_1000.txt") as torrents_file:
+        with open(os.path.join("data", self.settings.data_file_name)) as torrents_file:
             for ind, torrent_line in enumerate(torrents_file.readlines()):
+                if ind % 1000 == 0:
+                    print("Processed %d torrents..." % ind)
+
                 parts = torrent_line.strip().split("\t")
                 content_hash = unhexlify(parts[0])
                 self.content_hashes.append(content_hash)
@@ -91,7 +94,7 @@ class DKGSimulation(SkipgraphSimulation):
             if self.searches_done % 100 == 0:
                 print("Completed %d searches..." % self.searches_done)
 
-        for _ in range(1000):
+        for _ in range(self.settings.num_searches):
             content_hash = random.choice(list(content_with_triplets))
             random_node = random.choice(self.online_nodes)
             ensure_future(do_search(random.random() * 20, random_node, content_hash))
@@ -110,15 +113,18 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Write away the knowledge graph statistics per node
         with open(os.path.join(self.data_dir, "kg_stats.csv"), "w") as out_file:
-            out_file.write("peer,num_edges,storage_costs\n")
+            out_file.write("peers,replication_factor,peer,num_edges,storage_costs\n")
             for ind, node in enumerate(self.nodes):
                 num_edges = node.overlay.knowledge_graph.get_num_edges()
                 storage_costs = node.overlay.knowledge_graph.get_storage_costs()
-                out_file.write("%d,%d,%d\n" % (ind, num_edges, storage_costs))
+                out_file.write("%d,%d,%d,%d,%d\n" %
+                               (self.settings.peers, self.settings.replication_factor, ind, num_edges, storage_costs))
 
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,time\n")
+            latencies_file.write("peers,offline_fraction,replication_factor,time\n")
             for node in self.nodes:
                 for latency in node.overlay.edge_search_latencies:
-                    latencies_file.write("%d,%f\n" % (self.settings.peers, latency))
+                    latencies_file.write("%d,%d,%d,%f\n" %
+                                         (self.settings.peers, self.settings.offline_fraction,
+                                          self.settings.replication_factor, latency))

@@ -23,7 +23,7 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
             self.online_nodes.remove(node)
 
         # Schedule some searches
-        for _ in range(1000):
+        for _ in range(self.settings.num_searches):
             random_node = random.choice(self.online_nodes)
             await self.do_search(0, random_node, random.randint(0, 2 ** 32))
 
