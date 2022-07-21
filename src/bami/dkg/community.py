@@ -1,3 +1,4 @@
+import random
 from asyncio import get_event_loop
 from binascii import unhexlify, hexlify
 from typing import List, Optional
@@ -40,7 +41,8 @@ class DKGCommunity(SkipGraphCommunity):
         self.add_message_handler(TripletsResponsePayload, self.on_triplets_response)
         self.add_message_handler(TripletsEmptyResponsePayload, self.on_empty_triplets_response)
 
-        self.replication_factor = 1  # TODO this should be a setting
+        self.replication_factor: int = 2  # TODO this should be a setting
+        self.search_parallelism: int = 2
         self.should_verify_key: bool = True  # TODO this should be a setting
 
         self.logger.info("The DKG community started!")
@@ -50,22 +52,31 @@ class DKGCommunity(SkipGraphCommunity):
         Query the network to fetch incoming/outgoing edges of the node labelled with the content hash.
         """
         start_time = get_event_loop().time()
-        key = int.from_bytes(content_hash, 'big') % (2 ** 32)
-        target_node = await self.search(key)
-        if not target_node:
-            self.logger.warning("Search node with key %d failed and returned nothing - bailing out.", key)
+        content_keys: List[int] = Content.get_keys(content_hash, self.replication_factor)
+        random.shuffle(content_keys)  # For load balancing
+
+        # TODO we probably want to send search queries in parallel
+        for attempt in range(self.search_parallelism):
+            self.logger.info("Peer %s searching for edges (attempt %d/%d)" %
+                             (self.get_my_short_id(), attempt, self.search_parallelism))
+            key = content_keys[attempt]
+            target_node = await self.search(key)
+            if not target_node:
+                self.logger.warning("Search node with key %d failed and returned nothing.", key)
+                self.edge_search_latencies.append(get_event_loop().time() - start_time)
+                continue
+
+            # Query the target node directly for the edges.
+            # TODO could we integrate this directly in our SearchPayload at the lower layer? Might save a message?
+
+            cache = TripletsRequestCache(self)
+            self.request_cache.add(cache)
+            self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
+            triplets = await cache.future
+            if triplets:
+                return triplets
             self.edge_search_latencies.append(get_event_loop().time() - start_time)
-            return []
-
-        # Query the target node directly for the edges.
-        # TODO could we integrate this directly in our SearchPayload at the lower layer? Might save a message?
-
-        cache = TripletsRequestCache(self)
-        self.request_cache.add(cache)
-        self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
-        triplets = await cache.future
-        self.edge_search_latencies.append(get_event_loop().time() - start_time)
-        return triplets
+        return []
 
     @lazy_wrapper(TripletsRequestPayload)
     def on_triplets_request(self, peer: Peer, payload: TripletsRequestPayload):
@@ -110,7 +121,8 @@ class DKGCommunity(SkipGraphCommunity):
             self.logger.info("Content generated no triplets - won't send out storage requests")
             return
 
-        content_keys: List[int] = content.get_keys(self.replication_factor)
+        content_keys: List[int] = Content.get_keys(content.identifier, self.replication_factor)
+        # TODO this should be done in parallel
         for ind in range(self.replication_factor):
             target_node: Optional[SGNode] = await self.search(content_keys[ind])
             if not target_node:

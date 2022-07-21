@@ -4,6 +4,7 @@ import random
 from asyncio import sleep
 from typing import Dict
 
+from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.util import verify_skip_graph_integrity
 from ipv8.configuration import ConfigBuilder
 
@@ -20,6 +21,25 @@ class SkipgraphSimulation(BamiSimulation):
         self.invalid_searches = 0
         self.target_frequency: Dict[int, int] = {}
         self.key_to_node_ind: Dict[int, int] = {}
+        self.online_nodes = None
+
+    def invalidate_skip_graph(self, num_link_breaks):
+        # Invalidate the Skip Graph by breaking some random links at random levels
+        for node in random.sample(self.nodes, num_link_breaks):
+            rand_level = 0
+            do_left = (random.randint(0, 1) == 1)
+            if do_left:
+                ln = node.overlay.routing_table.get(rand_level, LEFT)
+                if ln:
+                    lln = self.nodes[self.key_to_node_ind[ln.key]].overlay.routing_table.get(rand_level, LEFT)
+                    if lln:
+                        node.overlay.routing_table.set(rand_level, LEFT, lln)
+            else:
+                rn = node.overlay.routing_table.get(rand_level, RIGHT)
+                if rn:
+                    rrn = self.nodes[self.key_to_node_ind[rn.key]].overlay.routing_table.get(rand_level, RIGHT)
+                    if rrn:
+                        node.overlay.routing_table.set(rand_level, RIGHT, rrn)
 
     async def do_search(self, delay, node, search_key):
         await sleep(delay)
@@ -119,6 +139,8 @@ class SkipgraphSimulation(BamiSimulation):
             exit(1)
         else:
             print("Skip Graph valid!")
+
+        self.online_nodes = [n for n in self.nodes]
 
     def on_simulation_finished(self):
         """

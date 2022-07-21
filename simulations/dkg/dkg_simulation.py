@@ -1,23 +1,25 @@
 import os
 import random
 from asyncio import sleep, ensure_future
-from binascii import unhexlify
+from binascii import unhexlify, hexlify
 from typing import List
 
 from bami.dkg.content import Content
 from bami.dkg.rules.ptn import PTNRule
 from ipv8.configuration import ConfigBuilder
 from simulations.settings import SimulationSettings
+from simulations.skipgraph.settings import SkipGraphSimulationSettings
 
 from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
 
 class DKGSimulation(SkipgraphSimulation):
 
-    def __init__(self, settings: SimulationSettings) -> None:
+    def __init__(self, settings: SkipGraphSimulationSettings) -> None:
         super().__init__(settings)
         self.content_hashes: List[bytes] = []
         self.searches_done: int = 0
+        self.failed_searches: int = 0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
@@ -40,6 +42,7 @@ class DKGSimulation(SkipgraphSimulation):
 
         # TODO hard-coded data file
         # Read the torrents data file and assign them to different nodes
+        print("Processing torrents...")
         with open("data/torrents_1000.txt") as torrents_file:
             for ind, torrent_line in enumerate(torrents_file.readlines()):
                 parts = torrent_line.strip().split("\t")
@@ -56,22 +59,47 @@ class DKGSimulation(SkipgraphSimulation):
 
         await sleep(20)  # Give some time to store the edges in the network
 
+        # Take a few nodes offline
+        for node in random.sample(self.nodes, 50):
+            node.overlay.is_offline = True
+            self.online_nodes.remove(node)
+
+        # Determine content that has generated edges - we do not want to search for content that has no edges
+        content_with_triplets = set()
+        for node in self.online_nodes:
+            content_with_triplets = content_with_triplets.union(node.overlay.knowledge_graph.stored_content)
+
+        print("%d content items with triplets" % len(content_with_triplets))
+
         print("Starting edge searches")
 
         async def do_search(delay, node, content_hash):
             await sleep(delay)
-            _ = await node.overlay.search_edges(content_hash)
+            edges = await node.overlay.search_edges(content_hash)
+            if not edges:
+                self.failed_searches += 1
 
             self.searches_done += 1
             if self.searches_done % 100 == 0:
                 print("Completed %d searches..." % self.searches_done)
 
         for _ in range(1000):
-            content_hash = random.choice(self.content_hashes)
-            random_node = random.choice(self.nodes)
+            content_hash = random.choice(list(content_with_triplets))
+            random_node = random.choice(self.online_nodes)
             ensure_future(do_search(random.random() * 20, random_node, content_hash))
 
+        await sleep(30)
+
+        print("Failed searches: %d" % self.failed_searches)
+
     def on_simulation_finished(self):
+        # Write away which node stores what
+        with open(os.path.join(self.data_dir, "storage.csv"), "w") as out_file:
+            out_file.write("content_id,peer_id\n")
+            for ind, node in enumerate(self.nodes):
+                for content_id in node.overlay.knowledge_graph.stored_content:
+                    out_file.write("%s,%d\n" % (hexlify(content_id).decode(), ind))
+
         # Write away the knowledge graph statistics per node
         with open(os.path.join(self.data_dir, "kg_stats.csv"), "w") as out_file:
             out_file.write("peer,num_edges\n")

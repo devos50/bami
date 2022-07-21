@@ -3,10 +3,9 @@ from asyncio import ensure_future
 from multiprocessing.context import Process
 
 from simulations.dkg.dkg_simulation import DKGSimulation
-from simulations.settings import SimulationSettings
+from simulations.skipgraph.settings import SkipGraphSimulationSettings
 
-
-PEERS = [100]
+PEERS = [200]
 
 
 def combine_edge_search_latencies():
@@ -35,13 +34,14 @@ def run(settings):
 if __name__ == "__main__":
     for num_peers in PEERS:
         print("Running experiment with %d peers..." % num_peers)
-        settings = SimulationSettings()
+        settings = SkipGraphSimulationSettings()
         settings.peers = num_peers
-        settings.duration = 600
+        settings.duration = 3600
         settings.logging_level = "ERROR"
         settings.profile = False
         settings.enable_community_statistics = True
         settings.enable_ipv8_ticker = False
+        settings.cache_intermediate_search_results = True
         settings.latencies_file = "data/latencies.txt"
 
         p = Process(target=run, args=(settings,))

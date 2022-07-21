@@ -8,7 +8,8 @@ class Content:
         self.identifier: bytes = identifier
         self.data: bytes = data
 
-    def get_keys(self, num_keys: int = 1) -> List[int]:
+    @staticmethod
+    def get_keys(identifier: bytes, num_keys: int = 1) -> List[int]:
         """
         Return the keys of this content item, an integer between 0 and 2^32.
         We can generate multiple keys, e.g., when we want to store this content at multiple nodes.
@@ -16,7 +17,7 @@ class Content:
         keys: List[int] = []
         for ind in range(num_keys):
             h = hashlib.sha1()
-            h.update(self.identifier)
+            h.update(identifier)
             h.update(b"%d" % ind)
             keys.append(int.from_bytes(h.digest(), 'big') % (2 ** 32))
 
