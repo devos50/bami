@@ -1,4 +1,3 @@
-import hashlib
 from typing import List, Tuple
 
 from bami.dkg.payloads import TripletPayload
@@ -11,12 +10,16 @@ class Triplet:
         self.relation: bytes = relation
         self.tail: bytes = tail
         self.signatures: List[Tuple[bytes, bytes]] = []
+        self.rules: List[bytes] = []  # The rules that generated the triplet
 
     def add_signature(self, public_key: bytes, signature: bytes) -> None:
         self.signatures.append((public_key, signature))
 
+    def add_rule(self, rule: bytes) -> None:
+        self.rules.append(rule)
+
     def to_payload(self) -> TripletPayload:
-        payload = TripletPayload(self.head, self.relation, self.tail, self.signatures)
+        payload = TripletPayload(self.head, self.relation, self.tail, self.signatures, self.rules)
         return payload
 
     @staticmethod

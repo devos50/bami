@@ -20,15 +20,20 @@ class KnowledgeGraph:
         if self.graph.has_edge(triplet.head, triplet.tail):
             edge = self.graph.edges[triplet.head, triplet.tail]
             if edge["attr"]["relation"] == triplet.relation:
-                # Edge seems to exist - simply merge the signatures
+                # Edge seems to exist - simply merge the signatures and rules
                 for sig in triplet.signatures:
                     if sig not in edge["attr"]["signatures"]:
                         edge["attr"]["signatures"].append(sig)
+
+                for rule in triplet.rules:
+                    if rule not in edge["attr"]["rules"]:
+                        edge["attr"]["rules"].append(rule)
+
                 return
 
         # Otherwise, add the adge as new
         self.graph.add_edge(triplet.head, triplet.tail,
-                            attr={"relation": triplet.relation, "signatures": triplet.signatures})
+                            attr={"relation": triplet.relation, "signatures": triplet.signatures, "rules": triplet.rules})
 
     def get_triplets_of_node(self, content: bytes) -> List[Triplet]:
         """

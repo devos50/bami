@@ -9,6 +9,7 @@ class TripletPayload:
     relation: bytes
     tail: bytes
     signatures: List[Tuple[bytes, bytes]]
+    rules: List[bytes]
 
 
 @dataclass(msg_id=20)

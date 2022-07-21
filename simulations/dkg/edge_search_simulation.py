@@ -5,10 +5,14 @@ from multiprocessing.context import Process
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings
 
-PEERS = [1000]
-OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-REPLICATION_FACTORS = [1, 2, 3, 4, 5]
-EXPERIMENT_REPLICATION = 5
+# PEERS = [1000]
+# OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+# REPLICATION_FACTORS = [1, 2, 3, 4, 5]
+# EXPERIMENT_REPLICATION = 5
+PEERS = [100, 200, 400, 800, 1600]
+OFFLINE_FRACTIONS = [0]
+REPLICATION_FACTORS = [1]
+EXPERIMENT_REPLICATION = 1
 
 
 class EdgeSearchDKGSimulation(DKGSimulation):
@@ -77,4 +81,4 @@ if __name__ == "__main__":
                 for p in processes:
                     p.join()
 
-    #combine_edge_search_latencies()
+    combine_edge_search_latencies()
