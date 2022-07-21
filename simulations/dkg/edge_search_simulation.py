@@ -77,7 +77,7 @@ if __name__ == "__main__":
                     settings.duration = 3600
                     settings.num_searches = 0
                     settings.data_file_name = "torrents_100000.txt"
-                    settings.identifier = exp_num
+                    settings.identifier = "%d_%d_%d" % (offline_fraction, replication_factor, exp_num)
                     settings.logging_level = "ERROR"
                     settings.profile = False
                     settings.enable_community_statistics = True
