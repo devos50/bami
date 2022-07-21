@@ -27,7 +27,7 @@ class EdgeSearchDKGSimulation(DKGSimulation):
                                                  self.failed_searches))
 
         with open(os.path.join("data", "edge_search_latencies.csv"), "a") as out_file:
-            with open(os.path.join("data", "n_%d" % self.settings.peers, "edge_search_latencies.csv")) as latencies_file:
+            with open(os.path.join(self.data_dir, "edge_search_latencies.csv")) as latencies_file:
                 parsed_header = False
                 for line in latencies_file.readlines():
                     if not parsed_header:
@@ -37,7 +37,7 @@ class EdgeSearchDKGSimulation(DKGSimulation):
                     out_file.write(line)
 
         with open(os.path.join("data", "kg_stats.csv"), "a") as out_file:
-            with open(os.path.join("data", "n_%d" % self.settings.peers, "kg_stats.csv")) as kg_stats_file:
+            with open(os.path.join(self.data_dir, "kg_stats.csv")) as kg_stats_file:
                 parsed_header = False
                 for line in kg_stats_file.readlines():
                     if not parsed_header:
