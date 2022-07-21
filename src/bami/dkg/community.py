@@ -86,6 +86,7 @@ class DKGCommunity(SkipGraphCommunity):
                     for failed_index in failed_indices:
                         self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
 
+                self.edge_search_latencies.append(get_event_loop().time() - start_time)
                 return triplets
             else:
                 # This node did not have the triplets we were looking for...
