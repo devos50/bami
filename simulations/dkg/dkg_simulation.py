@@ -4,7 +4,10 @@ from asyncio import sleep, ensure_future
 from binascii import unhexlify, hexlify
 from typing import List
 
+from ipv8.util import succeed
+
 from bami.dkg.content import Content
+from bami.dkg.db.triplet import Triplet
 from bami.dkg.rules.ptn import PTNRule
 from ipv8.configuration import ConfigBuilder
 from simulations.dkg.settings import DKGSimulationSettings
@@ -28,6 +31,16 @@ class DKGSimulation(SkipgraphSimulation):
         builder.add_overlay("DKGCommunity", "my peer", [], [], {}, [])
         return builder
 
+    def on_triplets_generated(self, content: Content, triplets: List[Triplet]):
+        """
+        We generated some triplets. Directly get the responsible node and store the triplets on that node.
+        """
+        content_keys = Content.get_keys(content.identifier, num_keys=self.settings.replication_factor)
+        for ind in range(self.settings.replication_factor):
+            responsible_node = self.get_responsible_node_for_key(content_keys[ind])
+            for triplet in triplets:
+                responsible_node.overlay.knowledge_graph.add_triplet(triplet)
+
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
 
@@ -48,6 +61,11 @@ class DKGSimulation(SkipgraphSimulation):
         # TODO hard-coded data file
         # Read the torrents data file and assign them to different nodes
         print("Processing torrents...")
+        if self.settings.fast_data_injection:
+            # First, change the callback of the rule execution engines so we don't spread edges in the network
+            for node in self.nodes:
+                node.overlay.rule_execution_engine.callback = self.on_triplets_generated
+
         with open(os.path.join("data", self.settings.data_file_name)) as torrents_file:
             for ind, torrent_line in enumerate(torrents_file.readlines()):
                 if ind % 1000 == 0:
@@ -65,7 +83,8 @@ class DKGSimulation(SkipgraphSimulation):
                 target_node.overlay.rule_execution_engine.process_queue.append(content)
                 target_node.overlay.rule_execution_engine.process()
 
-        await sleep(20)  # Give some time to store the edges in the network
+        if not self.settings.fast_data_injection:
+            await sleep(20)  # Give some time to store the edges in the network
 
         # Take a few nodes offline
         if self.settings.offline_fraction > 0:

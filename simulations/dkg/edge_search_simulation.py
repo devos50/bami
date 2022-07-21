@@ -75,6 +75,7 @@ if __name__ == "__main__":
                     settings.offline_fraction = offline_fraction
                     settings.replication_factor = replication_factor
                     settings.duration = 3600
+                    settings.fast_data_injection = True
                     settings.num_searches = 0
                     settings.data_file_name = "torrents_100000.txt"
                     settings.identifier = "%d_%d_%d" % (offline_fraction, replication_factor, exp_num)

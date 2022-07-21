@@ -41,6 +41,23 @@ class SkipgraphSimulation(BamiSimulation):
                     if rrn:
                         node.overlay.routing_table.set(rand_level, RIGHT, rrn)
 
+    def get_responsible_node_for_key(self, search_key: int):
+        """
+        Find the responsible node that is responsible for a particular key.
+        """
+        if search_key < self.node_keys_sorted[0]:
+            target_node_key = self.node_keys_sorted[0]
+        else:
+            # Perform a search through the keys
+            ind = len(self.node_keys_sorted) - 1
+            while ind >= 0:
+                if self.node_keys_sorted[ind] <= search_key:
+                    target_node_key = self.node_keys_sorted[ind]
+                    break
+                ind -= 1
+
+        return self.nodes[self.key_to_node_ind[target_node_key]]
+
     async def do_search(self, delay, node, search_key):
         await sleep(delay)
         res = await node.overlay.search(search_key)

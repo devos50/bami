@@ -2,6 +2,8 @@ import random
 from asyncio import ensure_future
 from typing import List, Callable
 
+from ipv8.util import maybe_coroutine
+
 from bami.dkg.db.triplet import Triplet
 
 from ipv8.taskmanager import TaskManager
@@ -46,4 +48,4 @@ class RuleExecutionEngine(TaskManager):
             triplets += rule_triplets
 
         # Invoke the callback with the new rules
-        ensure_future(self.callback(content, triplets))
+        ensure_future(maybe_coroutine(self.callback, content, triplets))
