@@ -53,6 +53,8 @@ if __name__ == "__main__":
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
             for replication_factor in REPLICATION_FACTORS:
+
+                processes = []
                 for exp_num in range(EXPERIMENT_REPLICATION):
                     print("Running experiment with %d peers..." % num_peers)
                     settings = DKGSimulationSettings()
@@ -60,6 +62,7 @@ if __name__ == "__main__":
                     settings.offline_fraction = offline_fraction
                     settings.replication_factor = replication_factor
                     settings.duration = 3600
+                    settings.identifier = exp_num
                     settings.logging_level = "ERROR"
                     settings.profile = False
                     settings.enable_community_statistics = True
@@ -69,6 +72,9 @@ if __name__ == "__main__":
 
                     p = Process(target=run, args=(settings,))
                     p.start()
+                    processes.append(p)
+
+                for p in processes:
                     p.join()
 
     #combine_edge_search_latencies()

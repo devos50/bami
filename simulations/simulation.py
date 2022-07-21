@@ -45,7 +45,9 @@ class BamiSimulation(TaskManager):
         self.settings = settings
         self.nodes = []
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.data_dir = os.path.join("data", "n_%d" % self.settings.peers)
+        dir_name = "n_%d" % self.settings.peers if not self.settings.identifier else \
+            "n_%d_%s" % (self.settings.peers, self.settings.identifier)
+        self.data_dir = os.path.join("data", dir_name)
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
