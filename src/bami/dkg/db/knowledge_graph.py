@@ -33,8 +33,7 @@ class KnowledgeGraph:
                 return
 
         # Otherwise, add the adge as new
-        self.graph.add_edge(triplet.head, triplet.tail,
-                            attr={"relation": triplet.relation, "signatures": triplet.signatures, "rules": triplet.rules})
+        self.graph.add_edge(triplet.head, triplet.tail, attr={"relation": triplet.relation, "rules": triplet.rules})
 
     def get_triplets_of_node(self, content: bytes) -> List[Triplet]:
         """
@@ -69,7 +68,6 @@ class KnowledgeGraph:
         for edge in self.graph.edges:
             relation = self.graph.edges[edge]["attr"]["relation"]
             triplet = Triplet(edge[0], relation, edge[1])
-            triplet.signatures = self.graph.edges[edge]["attr"]["signatures"]
             triplet.rules = self.graph.edges[edge]["attr"]["rules"]
             total_bytes += len(default_serializer.pack_serializable(triplet.to_payload()))
 

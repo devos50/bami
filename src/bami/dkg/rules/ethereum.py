@@ -2,6 +2,8 @@ import json
 from binascii import unhexlify
 from typing import Set
 
+from eth_utils import to_bytes
+
 from bami.dkg.content import Content
 from bami.dkg.db.triplet import Triplet
 from bami.dkg.rule_execution_engine import RuleExecutionEngine
@@ -9,7 +11,7 @@ from bami.dkg.rules.rule import Rule
 
 
 class EthereumBlockRule(Rule):
-    RULE_NAME = "EthereumBlock"
+    RULE_NAME = "ETHBLK"
 
     def apply_rule(self, engine: RuleExecutionEngine, content: Content) -> Set[Triplet]:
         triplets = set()
@@ -35,7 +37,7 @@ class EthereumBlockRule(Rule):
 
 
 class EthereumTransactionRule(Rule):
-    RULE_NAME = "EthereumTransaction"
+    RULE_NAME = "ETHTX"
 
     def apply_rule(self, engine: RuleExecutionEngine, content: Content) -> Set[Triplet]:
         triplets = set()
@@ -50,6 +52,6 @@ class EthereumTransactionRule(Rule):
             if key == "to" and value is None:
                 continue
 
-            triplets.add(Triplet(content.identifier, Rule.convert_to_bytes(key), value.encode()))
+            triplets.add(Triplet(content.identifier, Rule.convert_to_bytes(key), to_bytes(hexstr=value)))
 
         return triplets

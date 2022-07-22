@@ -5,8 +5,6 @@ from typing import List, Callable
 from bami.dkg.content import Content
 from ipv8.util import maybe_coroutine
 
-from bami.dkg.db.triplet import Triplet
-
 from ipv8.taskmanager import TaskManager
 from ipv8.types import PrivateKey
 
@@ -43,11 +41,10 @@ class RuleExecutionEngine(TaskManager):
         for rule in self.rules_db.get_all_rules():
             rule_triplets = rule.apply_rule(self, content)
             for triplet in rule_triplets:
-                # Sign the triplet
-                # TODO we use a dummy signature for now
-                triplet.add_signature(self.key.pub().key_to_bin(), b"a" * 32)
                 triplet.add_rule(rule.RULE_NAME)
             triplets += rule_triplets
+
+        # TODO we should probably create a Merkle root hash here
 
         # Invoke the callback with the new rules
         ensure_future(maybe_coroutine(self.callback, content, triplets))

@@ -4,12 +4,6 @@ from ipv8.messaging.payload_dataclass import dataclass
 
 
 @dataclass
-class SignaturePayload:
-    public_key: bytes
-    signature: bytes
-
-
-@dataclass
 class RulePayload:
     rule: bytes
 
@@ -19,7 +13,6 @@ class TripletPayload:
     head: bytes
     relation: bytes
     tail: bytes
-    signatures: List[SignaturePayload]
     rules: List[RulePayload]
 
 
