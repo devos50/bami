@@ -1,69 +1,27 @@
-import os
 from asyncio import ensure_future
 from multiprocessing.context import Process
 
+from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [100, 200, 400, 800, 1600, 3200, 6400]
+PEERS = [100, 200, 400, 800, 1600, 3200, 6400, 12800]
 OFFLINE_FRACTIONS = [0]
 REPLICATION_FACTORS = [1]
 EXPERIMENT_REPLICATION = 10
 ENABLE_CACHE = [True, False]
-# PEERS = [100]
-# OFFLINE_FRACTIONS = [0]
-# REPLICATION_FACTORS = [1]
-# EXPERIMENT_REPLICATION = 1
-
-
-class EdgeSearchDKGSimulation(DKGSimulation):
-
-    def on_simulation_finished(self):
-        super().on_simulation_finished()
-
-        # Write search statistics away
-        with open(os.path.join("data", "edge_searches.csv"), "a") as out_file:
-            out_file.write("%d,%d,%d,%d,%d\n" % (len(self.nodes), self.settings.offline_fraction,
-                                                 self.settings.replication_factor, self.searches_done,
-                                                 self.failed_searches))
-
-        with open(os.path.join("data", "edge_search_latencies.csv"), "a") as out_file:
-            with open(os.path.join(self.data_dir, "edge_search_latencies.csv")) as latencies_file:
-                parsed_header = False
-                for line in latencies_file.readlines():
-                    if not parsed_header:
-                        parsed_header = True
-                        continue
-
-                    out_file.write(line)
-
-        with open(os.path.join("data", "kg_stats.csv"), "a") as out_file:
-            with open(os.path.join(self.data_dir, "kg_stats.csv")) as kg_stats_file:
-                parsed_header = False
-                for line in kg_stats_file.readlines():
-                    if not parsed_header:
-                        parsed_header = True
-                        continue
-
-                    out_file.write(line)
+EXP_NAME = "search"
 
 
 def run(settings):
-    simulation = EdgeSearchDKGSimulation(settings)
+    simulation = DKGSimulation(settings)
     simulation.MAIN_OVERLAY = "DKGCommunity"
-
     ensure_future(simulation.run())
-
     simulation.loop.run_forever()
 
 
 if __name__ == "__main__":
-    with open(os.path.join("data", "edge_searches.csv"), "w") as out_file:
-        out_file.write("peers,offline_fraction,replication_factor,total_searches,failed_searches\n")
-    with open(os.path.join("data", "edge_search_latencies.csv"), "w") as out_file:
-        out_file.write("peers,offline_fraction,replication_factor,with_cache,time\n")
-    with open(os.path.join("data", "kg_stats.csv"), "w") as out_file:
-        out_file.write("peers,replication_factor,peer,key,num_edges,storage_costs\n")
+    create_aggregate_result_files(EXP_NAME)
 
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
@@ -74,6 +32,7 @@ if __name__ == "__main__":
                         print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
                         settings = DKGSimulationSettings()
                         settings.peers = num_peers
+                        settings.name = EXP_NAME
                         settings.offline_fraction = offline_fraction
                         settings.replication_factor = replication_factor
                         settings.duration = 3600
@@ -84,7 +43,6 @@ if __name__ == "__main__":
                         settings.data_file_name = "blocks.json"
                         settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, int(enable_cache))
                         settings.logging_level = "ERROR"
-                        settings.profile = False
                         settings.enable_community_statistics = True
                         settings.enable_ipv8_ticker = False
                         settings.cache_intermediate_search_results = enable_cache

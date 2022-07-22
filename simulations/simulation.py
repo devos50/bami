@@ -47,6 +47,8 @@ class BamiSimulation(TaskManager):
         self.logger = logging.getLogger(self.__class__.__name__)
         dir_name = "n_%d" % self.settings.peers if not self.settings.identifier else \
             "n_%d_%s" % (self.settings.peers, self.settings.identifier)
+        if self.settings.name:
+            dir_name = "%s_%s" % (dir_name, self.settings.name)
         self.data_dir = os.path.join("data", dir_name)
 
         self.loop = DiscreteLoop()

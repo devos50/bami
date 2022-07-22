@@ -186,6 +186,21 @@ class DKGSimulation(SkipgraphSimulation):
                                (self.settings.peers, self.settings.replication_factor, ind,
                                 node.overlay.routing_table.key, num_edges, storage_costs))
 
+        # Aggregate search hops statistics across nodes
+        hops_freq = {}
+        for node in self.nodes:
+            for num_hops, freq in node.overlay.search_hops.items():
+                if num_hops not in hops_freq:
+                    hops_freq[num_hops] = 0
+                hops_freq[num_hops] += freq
+
+        # Write away the search hops info
+        caching = "yes" if self.settings.cache_intermediate_search_results else "no"
+        with open(os.path.join(self.data_dir, "search_hops.csv"), "w") as search_hops_file:
+            search_hops_file.write("peers,hops,freq,caching\n")
+            for num_hops, freq in hops_freq.items():
+                search_hops_file.write("%d,%d,%d,%s\n" % (self.settings.peers, num_hops, freq, caching))
+
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:
             latencies_file.write("peers,offline_fraction,replication_factor,with_cache,time\n")
@@ -195,3 +210,47 @@ class DKGSimulation(SkipgraphSimulation):
                                          (self.settings.peers, self.settings.offline_fraction,
                                           self.settings.replication_factor,
                                           int(self.settings.cache_intermediate_search_results), latency))
+
+        # Write aggregated statistics away
+        aggregated_file_path = os.path.join("data", "edge_searches_exp_%s.csv" % self.settings.name)
+        if os.path.exists(aggregated_file_path):
+            with open(aggregated_file_path, "a") as out_file:
+                out_file.write("%d,%d,%d,%d,%d\n" % (len(self.nodes), self.settings.offline_fraction,
+                                                     self.settings.replication_factor, self.searches_done,
+                                                     self.failed_searches))
+
+        aggregated_file_path = os.path.join("data", "edge_search_latencies_exp_%s.csv" % self.settings.name)
+        if os.path.exists(aggregated_file_path):
+            with open(aggregated_file_path, "a") as out_file:
+                with open(os.path.join(self.data_dir, "edge_search_latencies.csv")) as latencies_file:
+                    parsed_header = False
+                    for line in latencies_file.readlines():
+                        if not parsed_header:
+                            parsed_header = True
+                            continue
+
+                        out_file.write(line)
+
+        aggregated_file_path = os.path.join("data", "kg_stats_exp_%s.csv" % self.settings.name)
+        if os.path.exists(aggregated_file_path):
+            with open(aggregated_file_path, "a") as out_file:
+                with open(os.path.join(self.data_dir, "kg_stats.csv")) as kg_stats_file:
+                    parsed_header = False
+                    for line in kg_stats_file.readlines():
+                        if not parsed_header:
+                            parsed_header = True
+                            continue
+
+                        out_file.write(line)
+
+        aggregated_file_path = os.path.join("data", "search_hops_exp_%s.csv" % self.settings.name)
+        if os.path.exists(aggregated_file_path):
+            with open(aggregated_file_path, "a") as out_file:
+                with open(os.path.join(self.data_dir, "search_hops.csv")) as kg_stats_file:
+                    parsed_header = False
+                    for line in kg_stats_file.readlines():
+                        if not parsed_header:
+                            parsed_header = True
+                            continue
+
+                        out_file.write(line)
