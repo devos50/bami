@@ -9,6 +9,7 @@ PEERS = [100, 200, 400, 800, 1600, 3200, 6400]
 OFFLINE_FRACTIONS = [0]
 REPLICATION_FACTORS = [1]
 EXPERIMENT_REPLICATION = 10
+ENABLE_CACHE = [True, False]
 # PEERS = [100]
 # OFFLINE_FRACTIONS = [0]
 # REPLICATION_FACTORS = [1]
@@ -60,37 +61,38 @@ if __name__ == "__main__":
     with open(os.path.join("data", "edge_searches.csv"), "w") as out_file:
         out_file.write("peers,offline_fraction,replication_factor,total_searches,failed_searches\n")
     with open(os.path.join("data", "edge_search_latencies.csv"), "w") as out_file:
-        out_file.write("peers,offline_fraction,replication_factor,time\n")
+        out_file.write("peers,offline_fraction,replication_factor,with_cache,time\n")
     with open(os.path.join("data", "kg_stats.csv"), "w") as out_file:
         out_file.write("peers,replication_factor,peer,key,num_edges,storage_costs\n")
 
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
             for replication_factor in REPLICATION_FACTORS:
-                processes = []
-                for exp_num in range(EXPERIMENT_REPLICATION):
-                    print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
-                    settings = DKGSimulationSettings()
-                    settings.peers = num_peers
-                    settings.offline_fraction = offline_fraction
-                    settings.replication_factor = replication_factor
-                    settings.duration = 3600
-                    settings.fast_data_injection = True
-                    settings.dataset = Dataset.ETHEREUM
-                    settings.num_searches = 0
-                    settings.max_eth_blocks = None
-                    settings.data_file_name = "blocks.json"
-                    settings.identifier = "%d_%d_%d" % (offline_fraction, replication_factor, exp_num)
-                    settings.logging_level = "ERROR"
-                    settings.profile = False
-                    settings.enable_community_statistics = True
-                    settings.enable_ipv8_ticker = False
-                    settings.cache_intermediate_search_results = True
-                    settings.latencies_file = "data/latencies.txt"
+                for enable_cache in ENABLE_CACHE:
+                    processes = []
+                    for exp_num in range(EXPERIMENT_REPLICATION):
+                        print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
+                        settings = DKGSimulationSettings()
+                        settings.peers = num_peers
+                        settings.offline_fraction = offline_fraction
+                        settings.replication_factor = replication_factor
+                        settings.duration = 3600
+                        settings.fast_data_injection = True
+                        settings.dataset = Dataset.ETHEREUM
+                        settings.num_searches = 10000
+                        settings.max_eth_blocks = None
+                        settings.data_file_name = "blocks.json"
+                        settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, int(enable_cache))
+                        settings.logging_level = "ERROR"
+                        settings.profile = False
+                        settings.enable_community_statistics = True
+                        settings.enable_ipv8_ticker = False
+                        settings.cache_intermediate_search_results = enable_cache
+                        settings.latencies_file = "data/latencies.txt"
 
-                    p = Process(target=run, args=(settings,))
-                    p.start()
-                    processes.append(p)
+                        p = Process(target=run, args=(settings,))
+                        p.start()
+                        processes.append(p)
 
-                for p in processes:
-                    p.join()
+                    for p in processes:
+                        p.join()

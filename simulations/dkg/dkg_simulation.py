@@ -188,9 +188,10 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,offline_fraction,replication_factor,time\n")
+            latencies_file.write("peers,offline_fraction,replication_factor,with_cache,time\n")
             for node in self.nodes:
                 for latency in node.overlay.edge_search_latencies:
-                    latencies_file.write("%d,%d,%d,%f\n" %
+                    latencies_file.write("%d,%d,%d,%d,%f\n" %
                                          (self.settings.peers, self.settings.offline_fraction,
-                                          self.settings.replication_factor, latency))
+                                          self.settings.replication_factor,
+                                          int(self.settings.cache_intermediate_search_results), latency))
