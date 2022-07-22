@@ -5,12 +5,12 @@ from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [100, 200, 400, 800, 1600, 3200, 6400, 12800]
-OFFLINE_FRACTIONS = [0]
-REPLICATION_FACTORS = [1, 5]
+PEERS = [100, 1600, 6400]
+OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+REPLICATION_FACTORS = [2]
 EXPERIMENT_REPLICATION = 10
-ENABLE_CACHE = [True]
-EXP_NAME = "storage"
+ENABLE_CACHE = [False, True]
+EXP_NAME = "search_fail_caching"
 
 
 def run(settings):
@@ -38,7 +38,7 @@ if __name__ == "__main__":
                         settings.duration = 3600
                         settings.fast_data_injection = True
                         settings.dataset = Dataset.ETHEREUM
-                        settings.num_searches = 0
+                        settings.num_searches = 10000
                         settings.max_eth_blocks = None
                         settings.data_file_name = "blocks.json"
                         settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, int(enable_cache))
