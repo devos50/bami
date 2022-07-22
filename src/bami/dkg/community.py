@@ -249,7 +249,7 @@ class DKGCommunity(SkipGraphCommunity):
         """
         if payload.content not in self.knowledge_graph.stored_content:
             self.logger.warning("Peer %s informed us of a failed search for content %s but we're not storing it!",
-                                self.get_short_id(peer.public_key.key_to_bin), hexlify(payload.content).decode())
+                                self.get_short_id(peer.public_key.key_to_bin()), hexlify(payload.content).decode())
             return
 
         if payload.key_index >= self.replication_factor:
