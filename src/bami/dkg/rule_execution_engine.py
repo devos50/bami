@@ -2,6 +2,7 @@ import random
 from asyncio import ensure_future
 from typing import List, Callable
 
+from bami.dkg.content import Content
 from ipv8.util import maybe_coroutine
 
 from bami.dkg.db.triplet import Triplet
@@ -17,7 +18,7 @@ class RuleExecutionEngine(TaskManager):
         self.content_db = content_db
         self.rules_db = rules_db
         self.key = key
-        self.process_queue: List[Triplet] = []
+        self.process_queue: List[Content] = []
         self.callback: Callable = callback
 
     def start(self, process_interval: int = 1):
@@ -40,11 +41,12 @@ class RuleExecutionEngine(TaskManager):
         content = self.process_queue.pop()
         triplets = []
         for rule in self.rules_db.get_all_rules():
-            rule_triplets = rule.apply_rule(content)
-            for triplet in triplets:
+            rule_triplets = rule.apply_rule(self, content)
+            for triplet in rule_triplets:
                 # Sign the triplet
                 # TODO we use a dummy signature for now
                 triplet.add_signature(self.key.pub().key_to_bin(), b"a" * 32)
+                triplet.add_rule(rule.RULE_NAME)
             triplets += rule_triplets
 
         # Invoke the callback with the new rules

@@ -1,6 +1,17 @@
-from typing import List, Tuple
+from typing import List
 
 from ipv8.messaging.payload_dataclass import dataclass
+
+
+@dataclass
+class SignaturePayload:
+    public_key: bytes
+    signature: bytes
+
+
+@dataclass
+class RulePayload:
+    rule: bytes
 
 
 @dataclass
@@ -8,8 +19,8 @@ class TripletPayload:
     head: bytes
     relation: bytes
     tail: bytes
-    signatures: List[Tuple[bytes, bytes]]
-    rules: List[bytes]
+    signatures: List[SignaturePayload]
+    rules: List[RulePayload]
 
 
 @dataclass(msg_id=20)

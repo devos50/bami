@@ -1,6 +1,12 @@
 from dataclasses import dataclass
+from enum import Enum
 
 from simulations.skipgraph.settings import SkipGraphSimulationSettings
+
+
+class Dataset(Enum):
+    TRIBLER = 0
+    ETHEREUM = 1
 
 
 @dataclass
@@ -9,3 +15,4 @@ class DKGSimulationSettings(SkipGraphSimulationSettings):
     offline_fraction: int = 0
     data_file_name: str = "torrents_1000.txt"
     fast_data_injection: bool = False  # Whether we sidestep the content injection
+    dataset = Dataset.TRIBLER

@@ -1,18 +1,16 @@
+import json
 import os
 import random
 from asyncio import sleep, ensure_future
 from binascii import unhexlify, hexlify
 from typing import List
 
-from ipv8.util import succeed
-
 from bami.dkg.content import Content
 from bami.dkg.db.triplet import Triplet
+from bami.dkg.rules.ethereum import EthereumBlockRule, EthereumTransactionRule
 from bami.dkg.rules.ptn import PTNRule
 from ipv8.configuration import ConfigBuilder
-from simulations.dkg.settings import DKGSimulationSettings
-from simulations.settings import SimulationSettings
-from simulations.skipgraph.settings import SkipGraphSimulationSettings
+from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
 from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
@@ -21,7 +19,6 @@ class DKGSimulation(SkipgraphSimulation):
 
     def __init__(self, settings: DKGSimulationSettings) -> None:
         super().__init__(settings)
-        self.content_hashes: List[bytes] = []
         self.searches_done: int = 0
         self.failed_searches: int = 0
 
@@ -41,26 +38,14 @@ class DKGSimulation(SkipgraphSimulation):
             for triplet in triplets:
                 responsible_node.overlay.knowledge_graph.add_triplet(triplet)
 
-    async def on_ipv8_ready(self) -> None:
-        await super().on_ipv8_ready()
-
-        # Set the replication factor
-        for node in self.nodes:
-            node.overlay.replication_factor = self.settings.replication_factor
-
-        # Reset all search hops statistics (since introduction will also conduct a search)
-        for node in self.nodes:
-            node.overlay.search_hops = {}
-            node.overlay.search_latencies = []
-
+    async def setup_tribler_experiment(self):
         # Give each node the PTN rule
         ptn_rule = PTNRule()
         for node in self.nodes:
             node.overlay.rules_db.add_rule(ptn_rule)
 
-        # TODO hard-coded data file
         # Read the torrents data file and assign them to different nodes
-        print("Processing torrents...")
+        print("Setting up Tribler experiment...")
         if self.settings.fast_data_injection:
             # First, change the callback of the rule execution engines so we don't spread edges in the network
             for node in self.nodes:
@@ -73,7 +58,6 @@ class DKGSimulation(SkipgraphSimulation):
 
                 parts = torrent_line.strip().split("\t")
                 content_hash = unhexlify(parts[0])
-                self.content_hashes.append(content_hash)
                 content_data = parts[1].encode()
                 content = Content(content_hash, content_data)
 
@@ -85,6 +69,61 @@ class DKGSimulation(SkipgraphSimulation):
 
         if not self.settings.fast_data_injection:
             await sleep(20)  # Give some time to store the edges in the network
+
+    async def setup_ethereum_experiment(self):
+        # Give each node the Ethereum rules
+        eth_block_rule = EthereumBlockRule()
+        eth_tx_rule = EthereumTransactionRule()
+        for node in self.nodes:
+            node.overlay.rules_db.add_rule(eth_block_rule)
+            node.overlay.rules_db.add_rule(eth_tx_rule)
+
+        print("Setting up Ethereum experiment...")
+        if self.settings.fast_data_injection:
+            # First, change the callback of the rule execution engines so we don't spread edges in the network
+            for node in self.nodes:
+                node.overlay.rule_execution_engine.callback = self.on_triplets_generated
+
+        # Feed Ethereum blocks to the rule execution engines
+        total_tx = 0
+        with open(os.path.join("data", self.settings.data_file_name)) as blocks_file:
+            for ind, block_line in enumerate(blocks_file.readlines()):
+                if ind % 100 == 0:
+                    print("Processed %d ETH blocks (txs so far: %d)..." % (ind, total_tx))
+
+                block_json = json.loads(block_line.strip())
+                total_tx += len(block_json["transactions"])
+                content_hash = unhexlify(block_json["hash"][2:])
+                content_data = block_line.strip().encode()
+                content = Content(content_hash, content_data)
+
+                target_node = self.nodes[ind % len(self.nodes)]
+                target_node.overlay.content_db.add_content(content)
+
+                target_node.overlay.rule_execution_engine.process_queue.append(content)
+                while target_node.overlay.rule_execution_engine.process_queue:
+                    target_node.overlay.rule_execution_engine.process()
+
+        print("Total ETH transactions: %d" % total_tx)
+
+    async def on_ipv8_ready(self) -> None:
+        await super().on_ipv8_ready()
+
+        # Set the replication factor
+        for node in self.nodes:
+            node.overlay.replication_factor = self.settings.replication_factor
+
+        # Reset all search hops statistics (since introduction will also conduct a search)
+        for node in self.nodes:
+            node.overlay.search_hops = {}
+            node.overlay.search_latencies = []
+
+        if self.settings.dataset == Dataset.TRIBLER:
+            await self.setup_tribler_experiment()
+        elif self.settings.dataset == Dataset.ETHEREUM:
+            await self.setup_ethereum_experiment()
+        else:
+            raise RuntimeError("Unknown dataset %s" % self.settings.dataset)
 
         # Take a few nodes offline
         if self.settings.offline_fraction > 0:

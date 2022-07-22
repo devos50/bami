@@ -1,6 +1,6 @@
 from typing import List, Tuple
 
-from bami.dkg.payloads import TripletPayload
+from bami.dkg.payloads import TripletPayload, SignaturePayload, RulePayload
 
 
 class Triplet:
@@ -19,11 +19,17 @@ class Triplet:
         self.rules.append(rule)
 
     def to_payload(self) -> TripletPayload:
-        payload = TripletPayload(self.head, self.relation, self.tail, self.signatures, self.rules)
+        signatures = [SignaturePayload(key, sig) for key, sig in self.signatures]
+        rules = [RulePayload(rule_name.encode()) for rule_name in self.rules]
+        payload = TripletPayload(self.head, self.relation, self.tail, signatures, rules)
         return payload
 
     @staticmethod
     def from_payload(payload: TripletPayload):
         triplet = Triplet(payload.head, payload.relation, payload.tail)
         triplet.signatures = payload.signatures
+        triplet.rules = payload.rules
         return triplet
+
+    def __str__(self) -> str:
+        return "<%s, %s, %s>" % (self.head.decode(), self.relation.decode(), self.tail.decode())

@@ -3,13 +3,14 @@ from typing import Set, Any
 
 from bami.dkg.db.triplet import Triplet
 from bami.dkg.content import Content
+from bami.dkg.rule_execution_engine import RuleExecutionEngine
 
 
 class Rule(ABC):
     RULE_NAME = None
 
     @abstractmethod
-    def apply_rule(self, content: Content) -> Set[Triplet]:
+    def apply_rule(self, engine: RuleExecutionEngine, content: Content) -> Set[Triplet]:
         """
         Apply this rule to a piece of content. Returns a set of triplets in the knowledge graph.
         """

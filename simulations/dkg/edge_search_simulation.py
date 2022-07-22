@@ -3,15 +3,15 @@ from asyncio import ensure_future
 from multiprocessing.context import Process
 
 from simulations.dkg.dkg_simulation import DKGSimulation
-from simulations.dkg.settings import DKGSimulationSettings
+from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
 # PEERS = [1000]
 # OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 # REPLICATION_FACTORS = [1, 2, 3, 4, 5]
 # EXPERIMENT_REPLICATION = 5
-PEERS = [50, 100, 200, 400, 800, 1600]
+PEERS = [100]
 OFFLINE_FRACTIONS = [0]
-REPLICATION_FACTORS = [1, 5]
+REPLICATION_FACTORS = [1]
 EXPERIMENT_REPLICATION = 1
 
 
@@ -76,8 +76,9 @@ if __name__ == "__main__":
                     settings.replication_factor = replication_factor
                     settings.duration = 3600
                     settings.fast_data_injection = True
+                    settings.dataset = Dataset.ETHEREUM
                     settings.num_searches = 0
-                    settings.data_file_name = "torrents_100000.txt"
+                    settings.data_file_name = "blocks.json"
                     settings.identifier = "%d_%d_%d" % (offline_fraction, replication_factor, exp_num)
                     settings.logging_level = "ERROR"
                     settings.profile = False
