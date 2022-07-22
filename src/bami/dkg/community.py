@@ -102,23 +102,24 @@ class DKGCommunity(SkipGraphCommunity):
                 triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
                 if triplets:
                     return triplets
-
-            cache = TripletsRequestCache(self)
-            self.request_cache.add(cache)
-            self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
-            triplets = await cache.future
-            if triplets:
-                if failed_indices:
-                    # Inform the target node about our prior failed searches
-                    for failed_index in failed_indices:
-                        self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
-
-                self.edge_search_latencies.append(get_event_loop().time() - start_time)
-                return triplets
             else:
-                # This node did not have the triplets we were looking for...
-                failed_indices.append(key_to_ind[key])
-            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+                # We send an outgoing query
+                cache = TripletsRequestCache(self)
+                self.request_cache.add(cache)
+                self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
+                triplets = await cache.future
+                if triplets:
+                    if failed_indices:
+                        # Inform the target node about our prior failed searches
+                        for failed_index in failed_indices:
+                            self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
+
+                    self.edge_search_latencies.append(get_event_loop().time() - start_time)
+                    return triplets
+                else:
+                    # This node did not have the triplets we were looking for...
+                    failed_indices.append(key_to_ind[key])
+                self.edge_search_latencies.append(get_event_loop().time() - start_time)
         return []
 
     @lazy_wrapper(TripletsRequestPayload)
