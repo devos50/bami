@@ -11,7 +11,7 @@ from bami.dkg.rules.rule import Rule
 
 
 class EthereumBlockRule(Rule):
-    RULE_NAME = "ETHBLK"
+    RULE_NAME = b"ETHBLK"
 
     def apply_rule(self, engine: RuleExecutionEngine, content: Content) -> Set[Triplet]:
         triplets = set()
@@ -37,7 +37,7 @@ class EthereumBlockRule(Rule):
 
 
 class EthereumTransactionRule(Rule):
-    RULE_NAME = "ETHTX"
+    RULE_NAME = b"ETHTX"
 
     def apply_rule(self, engine: RuleExecutionEngine, content: Content) -> Set[Triplet]:
         triplets = set()

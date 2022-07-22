@@ -15,14 +15,14 @@ class Triplet:
         self.rules.append(rule)
 
     def to_payload(self) -> TripletPayload:
-        rules = [RulePayload(rule_name.encode()) for rule_name in self.rules]
+        rules = [RulePayload(rule_name) for rule_name in self.rules]
         payload = TripletPayload(self.head, self.relation, self.tail, rules)
         return payload
 
     @staticmethod
     def from_payload(payload: TripletPayload):
         triplet = Triplet(payload.head, payload.relation, payload.tail)
-        triplet.rules = payload.rules
+        triplet.rules = [pl.rule for pl in payload.rules]
         return triplet
 
     def __str__(self) -> str:

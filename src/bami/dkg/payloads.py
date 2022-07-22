@@ -16,9 +16,9 @@ class TripletPayload:
     rules: List[RulePayload]
 
 
-@dataclass(msg_id=20)
-class TripletMessage:
-    triplet: TripletPayload
+@dataclass
+class TripletsPayload:
+    triplets: List[TripletPayload]
 
 
 @dataclass(msg_id=21)
@@ -36,20 +36,6 @@ class StorageResponsePayload:
 
 @dataclass(msg_id=23)
 class TripletsRequestPayload:
-    identifier: int
-    content: bytes
-
-
-@dataclass(msg_id=24)
-class TripletsResponsePayload:
-    identifier: int
-    content: bytes
-    total: int
-    triplet: TripletPayload
-
-
-@dataclass(msg_id=25)
-class TripletsEmptyResponsePayload:
     identifier: int
     content: bytes
 

@@ -1,16 +1,17 @@
+import json
 import random
-from asyncio import get_event_loop
+from asyncio import get_event_loop, ensure_future
 from binascii import unhexlify, hexlify
 from typing import List, Optional
 
 from bami.dkg.cache import StorageRequestCache, TripletsRequestCache, IsStoringQueryCache
 from bami.dkg.content import Content
+from bami.eva.protocol import EVAProtocol
 from bami.skipgraph import LEFT, RIGHT
 from bami.skipgraph.community import SkipGraphCommunity
 
-from bami.dkg.payloads import TripletMessage, StorageRequestPayload, StorageResponsePayload, TripletsRequestPayload, \
-    TripletsResponsePayload, TripletsEmptyResponsePayload, SearchFailurePayload, IsStoringQueryPayload, \
-    IsStoringResponsePayload
+from bami.dkg.payloads import StorageRequestPayload, StorageResponsePayload, TripletsRequestPayload, \
+    SearchFailurePayload, IsStoringQueryPayload, IsStoringResponsePayload, TripletsPayload
 from bami.dkg.db.content_database import ContentDatabase
 from bami.dkg.db.knowledge_graph import KnowledgeGraph
 from bami.dkg.db.rules_database import RulesDatabase
@@ -35,12 +36,12 @@ class DKGCommunity(SkipGraphCommunity):
 
         self.edge_search_latencies: List[float] = []  # Keep track of the latency of individual edge searches
 
-        self.add_message_handler(TripletMessage, self.on_triplet_message)
+        self.eva = EVAProtocol(self, self.on_eva_receive, self.on_eva_send_complete, self.on_eva_error)
+        self.eva.settings.max_simultaneous_transfers = 10000
+
         self.add_message_handler(StorageRequestPayload, self.on_storage_request)
         self.add_message_handler(StorageResponsePayload, self.on_storage_response)
         self.add_message_handler(TripletsRequestPayload, self.on_triplets_request)
-        self.add_message_handler(TripletsResponsePayload, self.on_triplets_response)
-        self.add_message_handler(TripletsEmptyResponsePayload, self.on_empty_triplets_response)
         self.add_message_handler(SearchFailurePayload, self.on_search_failure)
         self.add_message_handler(IsStoringQueryPayload, self.on_is_storing_query)
         self.add_message_handler(IsStoringResponsePayload, self.on_is_storing_response)
@@ -49,6 +50,29 @@ class DKGCommunity(SkipGraphCommunity):
         self.should_verify_key: bool = True
 
         self.logger.info("The DKG community started!")
+
+    async def on_eva_receive(self, result):
+        self.logger.info(f'EVA Data has been received: {result}')
+        info_json = json.loads(result.info.decode())
+        if info_json["type"] == "store":
+            triplets_payload = self.serializer.unpack_serializable(TripletsPayload, result.data)[0]
+            for triplet_payload in triplets_payload.triplets:
+                self.knowledge_graph.add_triplet(Triplet.from_payload(triplet_payload))
+        elif info_json["type"] == "search_response":
+            if not self.request_cache.has("triplets", info_json["id"]):
+                self.logger.warning("triplets cache with id %s not found", info_json["id"])
+                return
+
+            cache: TripletsRequestCache = self.request_cache.pop("triplets", info_json["id"])
+            triplets_payload = self.serializer.unpack_serializable(TripletsPayload, result.data)[0]
+            triplets = [Triplet.from_payload(triplet_payload) for triplet_payload in triplets_payload.triplets]
+            cache.future.set_result(triplets)
+
+    async def on_eva_send_complete(self, result):
+        self.logger.info(f'EVA transfer has been completed: {result}')
+
+    async def on_eva_error(self, peer, exception):
+        self.logger.error(f'EVA Error has occurred: {exception}')
 
     async def search_edges(self, content_hash: bytes) -> List[Triplet]:
         """
@@ -74,7 +98,10 @@ class DKGCommunity(SkipGraphCommunity):
                 continue
 
             # Query the target node directly for the edges.
-            # TODO could we integrate this directly in our SearchPayload at the lower layer? Might save a message?
+            if target_node.key == self.routing_table.key:
+                triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
+                if triplets:
+                    return triplets
 
             cache = TripletsRequestCache(self)
             self.request_cache.add(cache)
@@ -97,37 +124,10 @@ class DKGCommunity(SkipGraphCommunity):
     @lazy_wrapper(TripletsRequestPayload)
     def on_triplets_request(self, peer: Peer, payload: TripletsRequestPayload):
         triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
-        if not triplets:
-            self.ez_send(peer, TripletsEmptyResponsePayload(payload.identifier, payload.content))
-            return
-
-        for triplet in triplets:
-            rp = TripletsResponsePayload(payload.identifier, payload.content, len(triplets), triplet.to_payload())
-            self.ez_send(peer, rp)
-
-    @lazy_wrapper(TripletsResponsePayload)
-    def on_triplets_response(self, peer: Peer, payload: TripletsResponsePayload):
-        self.logger.info("Peer %s received triplets response from peer %s",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
-
-        if not self.request_cache.has("triplets", payload.identifier):
-            self.logger.warning("triplets cache with id %s not found", payload.identifier)
-            return
-
-        cache: TripletsRequestCache = self.request_cache.get("triplets", payload.identifier)
-        cache.on_triplet_response(payload)
-
-    @lazy_wrapper(TripletsEmptyResponsePayload)
-    def on_empty_triplets_response(self, peer: Peer, payload: TripletsResponsePayload):
-        self.logger.info("Peer %s received empty triplets response from peer %s",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
-
-        if not self.request_cache.has("triplets", payload.identifier):
-            self.logger.warning("triplets cache with id %s not found", payload.identifier)
-            return
-
-        cache: TripletsRequestCache = self.request_cache.pop("triplets", payload.identifier)
-        cache.future.set_result([])
+        triplets_payload = TripletsPayload([triplet.to_payload() for triplet in triplets])
+        serialized_payload = self.serializer.pack_serializable(triplets_payload)
+        info_json = {"type": "search_response", "id": payload.identifier, "cid": hexlify(payload.content).decode()}
+        ensure_future(self.eva.send_binary(peer, json.dumps(info_json).encode(), serialized_payload))
 
     async def on_new_triplets_generated(self, content: Content, triplets: List[Triplet]):
         """
@@ -146,13 +146,20 @@ class DKGCommunity(SkipGraphCommunity):
                                     content_keys[ind])
                 return
 
+            if target_node.key == self.routing_table.key:
+                # I'm responsible for storing this data
+                for triplet in triplets:
+                    self.knowledge_graph.add_triplet(triplet)
+                continue
+
             # Send a storage request to the target node.
             response = await self.send_storage_request(target_node, content.identifier, content_keys[ind])
             if response:
                 # Store the triplets on this peer
-                # TODO we should probably use EVA here instead of sending individual Triplet messages
-                for triplet in triplets:
-                    self.ez_send(target_node.get_peer(), TripletMessage(triplet.to_payload()))
+                triplets_payload = TripletsPayload([triplet.to_payload() for triplet in triplets])
+                serialized_payload = self.serializer.pack_serializable(triplets_payload)
+                info_json = {"type": "store", "cid": hexlify(content.identifier).decode()}
+                ensure_future(self.eva.send_binary(target_node.get_peer(), json.dumps(info_json).encode(), serialized_payload))
             else:
                 self.logger.warning("Peer %s refused storage request for key %d",
                                     self.get_short_id(target_node.public_key), content_keys[ind])
@@ -204,13 +211,6 @@ class DKGCommunity(SkipGraphCommunity):
 
         cache = self.request_cache.pop("store", payload.identifier)
         cache.future.set_result(payload.response)
-
-    @lazy_wrapper(TripletMessage)
-    def on_triplet_message(self, peer: Peer, payload: TripletMessage):
-        # TODO we should verify whether the triplets are valid, etc...
-        self.logger.info("Peer %s received triplet message from peer %s",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
-        self.knowledge_graph.add_triplet(payload.triplet)
 
     async def peer_is_storing_content(self, peer: Peer, content_hash: bytes) -> bool:
         cache = IsStoringQueryCache(self)
@@ -264,15 +264,16 @@ class DKGCommunity(SkipGraphCommunity):
             self.logger.warning("Search node with failing key %d failed and returned nothing.", failed_key)
             return
 
-        # TODO finish
         is_storing = await self.peer_is_storing_content(target_node.get_peer(), payload.content)
         if not is_storing:
             # The node should store the triplets
             response = await self.send_storage_request(target_node, payload.content, failed_key)
             if response:
                 triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
-                for triplet in triplets:
-                    self.ez_send(target_node.get_peer(), TripletMessage(triplet.to_payload()))
+                triplets_payload = TripletsPayload([triplet.to_payload() for triplet in triplets])
+                serialized_payload = self.serializer.pack_serializable(triplets_payload)
+                info_json = {"type": "store", "cid": hexlify(payload.content).decode()}
+                ensure_future(self.eva.send_binary(target_node.get_peer(), json.dumps(info_json).encode(), serialized_payload))
 
     def start_rule_execution_engine(self):
         self.rule_execution_engine.start()

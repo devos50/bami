@@ -21,11 +21,7 @@ class KnowledgeGraph:
         if self.graph.has_edge(triplet.head, triplet.tail):
             edge = self.graph.edges[triplet.head, triplet.tail]
             if edge["attr"]["relation"] == triplet.relation:
-                # Edge seems to exist - simply merge the signatures and rules
-                for sig in triplet.signatures:
-                    if sig not in edge["attr"]["signatures"]:
-                        edge["attr"]["signatures"].append(sig)
-
+                # Edge seems to exist - simply merge the rules
                 for rule in triplet.rules:
                     if rule not in edge["attr"]["rules"]:
                         edge["attr"]["rules"].append(rule)

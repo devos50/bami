@@ -2,15 +2,16 @@ from typing import Set
 
 from bami.dkg.db.triplet import Triplet
 from bami.dkg.content import Content
+from bami.dkg.rule_execution_engine import RuleExecutionEngine
 from bami.dkg.rules.rule import Rule
 
 import PTN
 
 
 class PTNRule(Rule):
-    RULE_NAME = "PTN"
+    RULE_NAME = b"PTN"
 
-    def apply_rule(self, content: Content) -> Set[Triplet]:
+    def apply_rule(self, engine: RuleExecutionEngine, content: Content) -> Set[Triplet]:
         metadata = PTN.parse(content.data.decode())
         triplets = set()
         for relation, tail in metadata.items():
