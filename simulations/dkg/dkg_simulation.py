@@ -86,8 +86,13 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Feed Ethereum blocks to the rule execution engines
         total_tx = 0
+        blocks_processed = 0
         with open(os.path.join("data", self.settings.data_file_name)) as blocks_file:
             for ind, block_line in enumerate(blocks_file.readlines()):
+                if self.settings.max_eth_blocks and blocks_processed >= self.settings.max_eth_blocks:
+                    print("Done - processed %d ETH blocks (txs so far: %d)..." % (ind, total_tx))
+                    break
+
                 if ind % 100 == 0:
                     print("Processed %d ETH blocks (txs so far: %d)..." % (ind, total_tx))
 
@@ -103,6 +108,8 @@ class DKGSimulation(SkipgraphSimulation):
                 target_node.overlay.rule_execution_engine.process_queue.append(content)
                 while target_node.overlay.rule_execution_engine.process_queue:
                     target_node.overlay.rule_execution_engine.process()
+
+                blocks_processed += 1
 
         print("Total ETH transactions: %d" % total_tx)
 
@@ -171,12 +178,13 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Write away the knowledge graph statistics per node
         with open(os.path.join(self.data_dir, "kg_stats.csv"), "w") as out_file:
-            out_file.write("peers,replication_factor,peer,num_edges,storage_costs\n")
+            out_file.write("peers,replication_factor,peer,key,num_edges,storage_costs\n")
             for ind, node in enumerate(self.nodes):
                 num_edges = node.overlay.knowledge_graph.get_num_edges()
                 storage_costs = node.overlay.knowledge_graph.get_storage_costs()
-                out_file.write("%d,%d,%d,%d,%d\n" %
-                               (self.settings.peers, self.settings.replication_factor, ind, num_edges, storage_costs))
+                out_file.write("%d,%d,%d,%d,%d,%d\n" %
+                               (self.settings.peers, self.settings.replication_factor, ind,
+                                node.overlay.routing_table.key, num_edges, storage_costs))
 
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:

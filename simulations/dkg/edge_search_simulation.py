@@ -5,14 +5,14 @@ from multiprocessing.context import Process
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-# PEERS = [1000]
-# OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-# REPLICATION_FACTORS = [1, 2, 3, 4, 5]
-# EXPERIMENT_REPLICATION = 5
-PEERS = [100]
+PEERS = [100, 200, 400, 800, 1600, 3200, 6400]
 OFFLINE_FRACTIONS = [0]
 REPLICATION_FACTORS = [1]
-EXPERIMENT_REPLICATION = 1
+EXPERIMENT_REPLICATION = 10
+# PEERS = [100]
+# OFFLINE_FRACTIONS = [0]
+# REPLICATION_FACTORS = [1]
+# EXPERIMENT_REPLICATION = 1
 
 
 class EdgeSearchDKGSimulation(DKGSimulation):
@@ -62,14 +62,14 @@ if __name__ == "__main__":
     with open(os.path.join("data", "edge_search_latencies.csv"), "w") as out_file:
         out_file.write("peers,offline_fraction,replication_factor,time\n")
     with open(os.path.join("data", "kg_stats.csv"), "w") as out_file:
-        out_file.write("peers,replication_factor,peer,num_edges,storage_costs\n")
+        out_file.write("peers,replication_factor,peer,key,num_edges,storage_costs\n")
 
-    processes = []
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
             for replication_factor in REPLICATION_FACTORS:
+                processes = []
                 for exp_num in range(EXPERIMENT_REPLICATION):
-                    print("Running experiment with %d peers..." % num_peers)
+                    print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
                     settings = DKGSimulationSettings()
                     settings.peers = num_peers
                     settings.offline_fraction = offline_fraction
@@ -78,6 +78,7 @@ if __name__ == "__main__":
                     settings.fast_data_injection = True
                     settings.dataset = Dataset.ETHEREUM
                     settings.num_searches = 0
+                    settings.max_eth_blocks = None
                     settings.data_file_name = "blocks.json"
                     settings.identifier = "%d_%d_%d" % (offline_fraction, replication_factor, exp_num)
                     settings.logging_level = "ERROR"
@@ -91,5 +92,5 @@ if __name__ == "__main__":
                     p.start()
                     processes.append(p)
 
-    for p in processes:
-        p.join()
+                for p in processes:
+                    p.join()
