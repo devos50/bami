@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Set
 
 from bami.skipgraph import RIGHT, LEFT, Direction
 from bami.skipgraph.membership_vector import MembershipVector
@@ -18,6 +18,7 @@ class RoutingTable:
         self.max_level: int = 0
         self.levels: List[RoutingTableSingleLevel] = []
         self.logger = logging.getLogger(__name__)
+        self.cached_nodes: Set[SGNode] = set()
 
         # Initialize all levels
         for level in range(MembershipVector.LENGTH + 1):
@@ -47,6 +48,29 @@ class RoutingTable:
             if rn and rn.key == key:
                 self.set(lvl, RIGHT, None)
 
+    def remove_node_from_cache(self, key: int):
+        to_remove: Optional[SGNode] = None
+        for node in self.cached_nodes:
+            if node.key == key:
+                to_remove = node
+                break
+
+        if to_remove:
+            self.cached_nodes.remove(to_remove)
+
+    def get_all_nodes(self) -> Set[SGNode]:
+        """
+        Return all unique nodes in the routing table.
+        """
+        all_nodes = set()
+        for level in self.levels:
+            for nb in level.neighbors:
+                if nb:
+                    all_nodes.add(nb)
+        all_nodes = all_nodes.union(self.cached_nodes)
+
+        return all_nodes
+
     def height(self) -> int:
         """
         Return the height of the routing table, i.e., the number of levels.
@@ -59,7 +83,10 @@ class RoutingTable:
 
         buf = []
         for i in range(len(self.levels)):
+            if self.levels[i].is_empty():
+                continue
             buf.append(str(self.levels[i]))
+        buf.append("=== RT node %d (MV: %s) ===" % (self.key, self.mv))
         return "\n".join(buf[::-1])
 
 
@@ -68,6 +95,9 @@ class RoutingTableSingleLevel:
         self.own_key: int = own_key
         self.neighbors: list[Optional[SGNode]] = [None, None]
         self.level = level
+
+    def is_empty(self) -> bool:
+        return all(nb is None for nb in self.neighbors)
 
     def __str__(self) -> str:
         ln = "-" if not self.neighbors[LEFT] else str(self.neighbors[LEFT])

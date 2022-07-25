@@ -22,6 +22,7 @@ class SkipgraphSimulation(BamiSimulation):
         self.target_frequency: Dict[int, int] = {}
         self.key_to_node_ind: Dict[int, int] = {}
         self.online_nodes = None
+        self.offline_nodes = []
 
     def invalidate_skip_graph(self, num_link_breaks):
         # Invalidate the Skip Graph by breaking some random links at random levels
@@ -72,7 +73,7 @@ class SkipgraphSimulation(BamiSimulation):
         elif search_key >= self.node_keys_sorted[0]:
             res_ind = self.node_keys_sorted.index(res.key)
             if res_ind == len(self.node_keys_sorted) - 1:
-                if search_key <= res_ind:
+                if search_key <= self.node_keys_sorted[res_ind - 1]:
                     search_result_is_correct = False
             else:
                 if self.node_keys_sorted[res_ind + 1] <= search_key:
@@ -86,6 +87,8 @@ class SkipgraphSimulation(BamiSimulation):
         if self.searches_done % 100 == 0:
             print("Completed %d searches..." % self.searches_done)
 
+        return search_result_is_correct, res
+
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
         builder.add_overlay("SkipGraphCommunity", "my peer", [], [], {}, [])
@@ -97,13 +100,15 @@ class SkipgraphSimulation(BamiSimulation):
         """
         pass
 
-    def initialize_routing_table(self, node) -> None:
-        # Create a hash from the PK
-        h = hashlib.md5()
-        h.update(node.overlay.my_peer.public_key.key_to_bin())
-        # int_pk = (2 ** 32) // len(self.nodes) * ind
-        # int_pk = random.randint(0, (2 ** 32))
-        int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
+    def initialize_routing_table(self, ind: int, node) -> None:
+        int_pk = ind + 1
+        if not self.settings.assign_sequential_sg_keys:
+            # Create a hash from the PK
+            h = hashlib.md5()
+            h.update(node.overlay.my_peer.public_key.key_to_bin())
+            # int_pk = (2 ** 32) // len(self.nodes) * ind
+            # int_pk = random.randint(0, (2 ** 32))
+            int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
         self.node_keys_sorted.append(int_pk)
         node.overlay.initialize_routing_table(int_pk)
 
@@ -111,8 +116,8 @@ class SkipgraphSimulation(BamiSimulation):
         await super().start_ipv8_nodes()
 
         # Initialize the routing tables of each node after starting the IPv8 nodes.
-        for node in self.nodes:
-            self.initialize_routing_table(node)
+        for ind, node in enumerate(self.nodes):
+            self.initialize_routing_table(ind, node)
 
         # Apply the appropriate settings
         for node in self.nodes:
@@ -143,7 +148,7 @@ class SkipgraphSimulation(BamiSimulation):
             self.logger.info("Node %d will join the Skip Graph using introducer peer %d", ind, introducer_id)
             self.nodes[ind].overlay.peers_info[self.nodes[introducer_id].overlay.my_peer] = self.nodes[introducer_id].overlay.get_my_node()
             await self.nodes[ind].overlay.join(introducer_peer=self.nodes[introducer_id].overlay.my_peer)
-            node_ids_that_joined.append(ind)
+            #node_ids_that_joined.append(ind)
             await sleep(0.1)
             self.logger.info("Node %d joined the Skip Graph..." % ind)
             count += 1

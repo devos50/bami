@@ -1,5 +1,5 @@
 import random
-from asyncio import get_event_loop
+from asyncio import get_event_loop, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List, Set
 
@@ -64,7 +64,6 @@ class SkipGraphCommunity(Community):
         self.is_leaving: bool = False  # Whether we are leaving the Skip Graph
 
         self.cache_search_responses: bool = True  # Whether we cache intermediate search responses
-        self.cached_nodes: Set[SGNode] = set()
 
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
 
@@ -73,16 +72,6 @@ class SkipGraphCommunity(Community):
 
     def get_short_id(self, peer_pk: bytes) -> str:
         return hexlify(peer_pk).decode()[-8:]
-
-    def remove_node_from_cache(self, key: int):
-        to_remove: Optional[SGNode] = None
-        for node in self.cached_nodes:
-            if node.key == key:
-                to_remove = node
-                break
-
-        if to_remove:
-            self.cached_nodes.remove(to_remove)
 
     def initialize_routing_table(self, key: int, mv: Optional[MembershipVector] = None):
         mv = mv or MembershipVector()
@@ -93,10 +82,11 @@ class SkipGraphCommunity(Community):
         my_pk = self.my_peer.public_key.key_to_bin()
         return SGNode(self.my_estimated_wan, my_pk, self.routing_table.key, self.routing_table.mv)
 
-    def forward_search(self, received_payload: SearchPayload, from_peer: Peer, to_node: SGNode, search_id: int, forward_id: int,
-                       originator: SGNode, search_key: int, level: int, hops: int):
-        self.logger.debug("Peer %s forwarding search request for %d to peer %s (key %d)",
-                          self.get_my_short_id(), search_key, self.get_short_id(to_node.public_key), to_node.key)
+    def forward_search(self, received_payload: SearchPayload, from_peer: Peer, to_node: SGNode, search_id: int,
+                       forward_id: int, originator: SGNode, search_key: int, level: int, hops: int):
+        self.logger.debug("Peer %s (key %d) forwarding search request for key %d to peer %s (key %d)",
+                          self.get_my_short_id(), self.routing_table.key, search_key,
+                          self.get_short_id(to_node.public_key), to_node.key)
 
         cache = SearchForwardRequestCache(self, received_payload, from_peer, to_node)
         self.request_cache.add(cache)
@@ -117,9 +107,11 @@ class SkipGraphCommunity(Community):
         if self.is_offline:
             return
 
-        self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d)",
+        self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d, "
+                         "ID: %d, FW ID: %d)",
                          self.get_my_short_id(), self.routing_table.key,
-                         self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level)
+                         self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level,
+                         payload.identifier, payload.forward_identifier)
 
         self.handle_search_request(peer, payload)
 
@@ -130,13 +122,17 @@ class SkipGraphCommunity(Community):
             # Send this nodes' info back to the search originator
             response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
+
+            # Also send a message back to the node that sent us the search request
+            response_payload = SearchIntermediateResponsePayload(payload.forward_identifier, originator_node.to_payload())
+            self.ez_send(peer, response_payload)
             return
 
         # If we have caching enabled, route the search to the closest node in the cache
         best_node: Optional[SGNode] = None
-        if self.cache_search_responses and self.cached_nodes:
+        if self.cache_search_responses and self.routing_table.cached_nodes:
             # Check if we have a node that is close to the target node
-            for cached_node in self.cached_nodes:
+            for cached_node in self.routing_table.cached_nodes:
                 if not best_node or abs(cached_node.key - payload.search_key) < abs(best_node.key - payload.search_key):
                     best_node = cached_node
 
@@ -237,9 +233,9 @@ class SkipGraphCommunity(Community):
 
         if self.cache_search_responses:
             node = SGNode.from_payload(payload.node)
-            if node not in self.cached_nodes:
+            if node not in self.routing_table.cached_nodes:
                 self.logger.debug("Caching node %s", self.get_short_id(node.public_key))
-                self.cached_nodes.add(node)
+                self.routing_table.cached_nodes.add(node)
 
     def on_search_forward_timeout(self, cache: SearchForwardRequestCache):
         """
@@ -250,7 +246,7 @@ class SkipGraphCommunity(Community):
 
         # Remove the failing node from the routing table and the cache
         self.routing_table.remove_node(cache.to_node.key)
-        self.remove_node_from_cache(cache.to_node.key)
+        self.routing_table.remove_node_from_cache(cache.to_node.key)
 
         # Initiate the search request again
         self.handle_search_request(cache.from_peer, cache.payload)
@@ -305,7 +301,8 @@ class SkipGraphCommunity(Community):
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
     async def search(self, key: int, introducer_node: Optional[SGNode] = None) -> SGNode:
-        self.logger.info("Peer %s initiating search for key %d", self.get_my_short_id(), key)
+        self.logger.info("Peer %s (key %d) initiating search for key %d",
+                         self.get_my_short_id(), self.routing_table.key, key)
 
         cache = SearchRequestCache(self)
         self.request_cache.add(cache)

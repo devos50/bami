@@ -42,7 +42,7 @@ class ChurnSkipgraphSimulation(SkipgraphSimulation):
         self.joining_node_ids.add(random_inactive_node_id)
         introducer_node_id = random.choice(list(self.active_node_ids))
         introducer_node = self.nodes[introducer_node_id]
-        self.initialize_routing_table(random_active_node)
+        self.initialize_routing_table(random_inactive_node_id, random_active_node)
         random_active_node.overlay.peers_info[introducer_node.overlay.my_peer] = introducer_node.overlay.get_my_node()
 
         await random_active_node.overlay.join(introducer_peer=introducer_node.overlay.my_peer)

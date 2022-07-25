@@ -139,6 +139,7 @@ class DKGSimulation(SkipgraphSimulation):
             for node in random.sample(self.nodes, num_offline):
                 node.overlay.is_offline = True
                 self.online_nodes.remove(node)
+                self.offline_nodes.append(node)
 
         # Determine content that has generated edges - we do not want to search for content that has no triplets
         content_with_triplets = set()

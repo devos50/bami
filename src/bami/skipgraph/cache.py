@@ -2,7 +2,7 @@ from asyncio import Future, get_event_loop
 
 from bami.skipgraph.node import SGNode
 from bami.skipgraph.payload import SearchPayload
-from ipv8.requestcache import RandomNumberCache, NumberCache
+from ipv8.requestcache import RandomNumberCache
 from ipv8.types import Peer
 
 
@@ -33,6 +33,13 @@ class SearchRequestCache(RandomNumberCache):
         super().__init__(community.request_cache, "search")
         self.future = Future()
         self.start_time = get_event_loop().time()
+
+    @property
+    def timeout_delay(self):
+        return 20.0
+
+    def on_timeout(self):
+        print("TIMEOUT")
 
 
 class SearchForwardRequestCache(RandomNumberCache):
