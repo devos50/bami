@@ -18,7 +18,6 @@ class RoutingTable:
         self.max_level: int = 0
         self.levels: List[RoutingTableSingleLevel] = []
         self.logger = logging.getLogger(__name__)
-        self.cached_nodes: Set[SGNode] = set()
 
         # Initialize all levels
         for level in range(MembershipVector.LENGTH + 1):
@@ -28,35 +27,37 @@ class RoutingTable:
         if level >= len(self.levels):
             return None
 
-        return self.levels[level].neighbors[side]
+        nbs = self.levels[level].neighbors[side]
+        if not nbs:
+            return None
+
+        ind = 0 if side == RIGHT else len(self.levels[level].neighbors[side]) - 1
+        return nbs[ind]
 
     def set(self, level: int, side: Direction, node: Optional[SGNode]) -> None:
+        if node is None:
+            return
+
         side_str = "left" if side == LEFT else "right"
         self.logger.debug("Node with key %d setting %s neighbour to %s at level %d", self.key, side_str, node, level)
-        self.levels[level].neighbors[side] = node
+        if node not in self.levels[level].neighbors[side]:
+            self.levels[level].neighbors[side].append(node)
+            self.levels[level].neighbors[side].sort(key=lambda x: x.key)
 
     def remove_node(self, key: int):
         """
         Remove the node with a particular key from the routing table, replacing it with None.
         """
         for lvl in range(self.height()):
-            ln = self.get(lvl, LEFT)
-            if ln and ln.key == key:
-                self.set(lvl, LEFT, None)
+            for side in [LEFT, RIGHT]:
+                is_in = None
+                for nb in self.levels[lvl].neighbors[side]:
+                    if nb.key == key:
+                        is_in = nb
+                        break
 
-            rn = self.get(lvl, RIGHT)
-            if rn and rn.key == key:
-                self.set(lvl, RIGHT, None)
-
-    def remove_node_from_cache(self, key: int):
-        to_remove: Optional[SGNode] = None
-        for node in self.cached_nodes:
-            if node.key == key:
-                to_remove = node
-                break
-
-        if to_remove:
-            self.cached_nodes.remove(to_remove)
+                if is_in:
+                    self.levels[lvl].neighbors[side].remove(nb)
 
     def get_all_nodes(self) -> Set[SGNode]:
         """
@@ -64,10 +65,9 @@ class RoutingTable:
         """
         all_nodes = set()
         for level in self.levels:
-            for nb in level.neighbors:
-                if nb:
+            for nb_list in level.neighbors:
+                for nb in nb_list:
                     all_nodes.add(nb)
-        all_nodes = all_nodes.union(self.cached_nodes)
 
         return all_nodes
 
@@ -93,13 +93,11 @@ class RoutingTable:
 class RoutingTableSingleLevel:
     def __init__(self, own_key: int, level: int):
         self.own_key: int = own_key
-        self.neighbors: list[Optional[SGNode]] = [None, None]
+        self.neighbors: list[Optional[List[SGNode]]] = [[], []]
         self.level = level
 
     def is_empty(self) -> bool:
-        return all(nb is None for nb in self.neighbors)
+        return all(not nb for nb in self.neighbors)
 
     def __str__(self) -> str:
-        ln = "-" if not self.neighbors[LEFT] else str(self.neighbors[LEFT])
-        rn = "-" if not self.neighbors[RIGHT] else str(self.neighbors[RIGHT])
-        return "Level %d: LEFT=%s, RIGHT=%s" % (self.level, ln, rn)
+        return "Level %d: LEFT=%s, RIGHT=%s" % (self.level, str(self.neighbors[LEFT]), str(self.neighbors[RIGHT]))

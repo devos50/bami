@@ -39,7 +39,7 @@ class SearchRequestCache(RandomNumberCache):
         return 20.0
 
     def on_timeout(self):
-        print("TIMEOUT")
+        self.future.set_result(None)
 
 
 class SearchForwardRequestCache(RandomNumberCache):

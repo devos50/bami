@@ -130,11 +130,6 @@ class SkipGraphCommunity(Community):
 
         # If we have caching enabled, route the search to the closest node in the cache
         best_node: Optional[SGNode] = None
-        if self.cache_search_responses and self.routing_table.cached_nodes:
-            # Check if we have a node that is close to the target node
-            for cached_node in self.routing_table.cached_nodes:
-                if not best_node or abs(cached_node.key - payload.search_key) < abs(best_node.key - payload.search_key):
-                    best_node = cached_node
 
         if self.routing_table.key < payload.search_key:
             # Search to the right
@@ -231,12 +226,6 @@ class SkipGraphCommunity(Community):
 
         self.request_cache.pop("forward-search", payload.identifier)
 
-        if self.cache_search_responses:
-            node = SGNode.from_payload(payload.node)
-            if node not in self.routing_table.cached_nodes:
-                self.logger.debug("Caching node %s", self.get_short_id(node.public_key))
-                self.routing_table.cached_nodes.add(node)
-
     def on_search_forward_timeout(self, cache: SearchForwardRequestCache):
         """
         The search forward failed and we have to find an alternative route.
@@ -246,7 +235,6 @@ class SkipGraphCommunity(Community):
 
         # Remove the failing node from the routing table and the cache
         self.routing_table.remove_node(cache.to_node.key)
-        self.routing_table.remove_node_from_cache(cache.to_node.key)
 
         # Initiate the search request again
         self.handle_search_request(cache.from_peer, cache.payload)

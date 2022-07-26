@@ -4,6 +4,7 @@ Simulation that initiates a number of searches in the Skip Graph.
 import random
 from asyncio import ensure_future, sleep
 
+from bami.skipgraph import LEFT, RIGHT
 from simulations.skipgraph.settings import SkipGraphSimulationSettings
 from simulations.skipgraph.sg_simulation import SkipgraphSimulation
 
@@ -18,22 +19,59 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
             node.overlay.search_hops = {}
             node.overlay.search_latencies = []
 
-        # First we do some searches to warm-up the cache
-        self.logger.error("Starting caches warm-up searches")
-        for _ in range(500):
-            random_node = random.choice(self.online_nodes)
-            search_target = random.randint(0, self.node_keys_sorted[-1])
-            await self.do_search(0, random_node, search_target)
-
-        self.searches_done = 0
-        self.invalid_searches = 0
-
-        for node in random.sample(self.nodes[1:], 500):
+        for node in random.sample(self.nodes[1:], 20):
             node.overlay.is_offline = True
             print("Offline node: %s" % node.overlay.get_my_node())
             self.online_nodes.remove(node)
             self.offline_nodes.append(node)
             self.node_keys_sorted.remove(node.overlay.routing_table.key)
+
+        # TODO bit of cheating here, add left/right neighbours to the routing tables with full knowledge
+
+        # for node in self.nodes:
+        #     print(node.overlay.routing_table)
+
+        # First, clear everything except the first NB
+        for node in self.nodes:
+            for level in range(node.overlay.routing_table.height()):
+                for side in [LEFT, RIGHT]:
+                    nbs = node.overlay.routing_table.levels[level].neighbors[side]
+                    if not nbs:
+                        continue  # We cannot extend it
+
+                    num_nbs = len(nbs)
+                    cur_nbs = nbs[0 if side == RIGHT else len(nbs) - 1]
+
+                    # Clear everything except the first NB
+                    node.overlay.routing_table.levels[level].neighbors[side] = [cur_nbs]
+
+        # for node in self.nodes:
+        #     print(node.overlay.routing_table)
+
+        # Extend the neighbourhoods
+        target_size = 2
+        for node in self.nodes:
+            for level in range(node.overlay.routing_table.height()):
+                for side in [LEFT, RIGHT]:
+                    nbs = node.overlay.routing_table.levels[level].neighbors[side]
+                    if not nbs:
+                        continue  # We cannot extend it
+
+                    cur_nbs = nbs[0 if side == RIGHT else len(nbs) - 1]
+
+                    while len(nbs) < target_size:
+                        # Get the left/right neighbour of the current neighbour
+                        ipv8_nb_node = self.nodes[self.key_to_node_ind[cur_nbs.key]]
+                        nb_nbs = ipv8_nb_node.overlay.routing_table.levels[level].neighbors[side]
+                        if not nb_nbs:
+                            break  # Unable to extend further
+
+                        nb_nb = ipv8_nb_node.overlay.routing_table.levels[level].neighbors[side][0 if side == RIGHT else len(nb_nbs) - 1]
+                        node.overlay.routing_table.set(level, side, nb_nb)
+                        cur_nbs = nb_nb
+
+        for node in self.nodes:
+            print(node.overlay.routing_table)
 
         # Schedule some searches
         print(self.node_keys_sorted)
@@ -58,7 +96,7 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
 
 if __name__ == "__main__":
     settings = SkipGraphSimulationSettings()
-    settings.peers = 1000
+    settings.peers = 100
     settings.duration = 3600
     settings.logging_level = "ERROR"
     settings.profile = False
@@ -68,7 +106,7 @@ if __name__ == "__main__":
     settings.latencies_file = "data/latencies.txt"
     settings.cache_intermediate_search_results = True
     settings.track_failing_nodes_in_rts = False
-    settings.assign_sequential_sg_keys = True
+    #settings.assign_sequential_sg_keys = True
     simulation = SearchSkipgraphSimulation(settings)
     simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 

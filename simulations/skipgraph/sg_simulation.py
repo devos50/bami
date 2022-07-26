@@ -63,6 +63,12 @@ class SkipgraphSimulation(BamiSimulation):
         await sleep(delay)
         res = await node.overlay.search(search_key)
 
+        if not res:
+            # Search failed
+            self.invalid_searches += 1
+            self.searches_done += 1
+            return False, None
+
         # Verify that this is the right search result
         if res.key not in self.node_keys_sorted:
             assert False, "We got a key result that is not registered in the Skip List!"
