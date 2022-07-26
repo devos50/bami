@@ -24,6 +24,9 @@ class RoutingTable:
             self.levels.append(RoutingTableSingleLevel(self.key, level))
 
     def get(self, level: int, side: Direction) -> Optional[SGNode]:
+        """
+        Return the immediate neighbour on a particular level and a side.
+        """
         if level >= len(self.levels):
             return None
 
@@ -33,6 +36,12 @@ class RoutingTable:
 
         ind = 0 if side == RIGHT else len(self.levels[level].neighbors[side]) - 1
         return nbs[ind]
+
+    def get_all(self, level: int, side: Direction) -> List[SGNode]:
+        if level >= len(self.levels):
+            return []
+
+        return self.levels[level].neighbors[side]
 
     def set(self, level: int, side: Direction, node: Optional[SGNode]) -> None:
         if node is None:
