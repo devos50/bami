@@ -24,6 +24,43 @@ class SkipgraphSimulation(BamiSimulation):
         self.online_nodes = None
         self.offline_nodes = []
 
+    def extend_skip_graph_neighbourhood(self, neighbourhood_size):
+        # First, clear everything except the first NB
+        for node in self.nodes:
+            for level in range(node.overlay.routing_table.height()):
+                for side in [LEFT, RIGHT]:
+                    nbs = node.overlay.routing_table.levels[level].neighbors[side]
+                    if not nbs:
+                        continue  # We cannot extend it
+
+                    num_nbs = len(nbs)
+                    cur_nbs = nbs[0 if side == RIGHT else len(nbs) - 1]
+
+                    # Clear everything except the first NB
+                    node.overlay.routing_table.levels[level].neighbors[side] = [cur_nbs]
+
+        # Extend the neighbourhoods
+        for node in self.nodes:
+            for level in range(node.overlay.routing_table.height()):
+                for side in [LEFT, RIGHT]:
+                    nbs = node.overlay.routing_table.levels[level].neighbors[side]
+                    if not nbs:
+                        continue  # We cannot extend it
+
+                    cur_nbs = nbs[0 if side == RIGHT else len(nbs) - 1]
+
+                    while len(nbs) < neighbourhood_size:
+                        # Get the left/right neighbour of the current neighbour
+                        ipv8_nb_node = self.nodes[self.key_to_node_ind[cur_nbs.key]]
+                        nb_nbs = ipv8_nb_node.overlay.routing_table.levels[level].neighbors[side]
+                        if not nb_nbs:
+                            break  # Unable to extend further
+
+                        nb_nb = ipv8_nb_node.overlay.routing_table.levels[level].neighbors[side][
+                            0 if side == RIGHT else len(nb_nbs) - 1]
+                        node.overlay.routing_table.set(level, side, nb_nb)
+                        cur_nbs = nb_nb
+
     def invalidate_skip_graph(self, num_link_breaks):
         # Invalidate the Skip Graph by breaking some random links at random levels
         for node in random.sample(self.nodes, num_link_breaks):
@@ -125,10 +162,6 @@ class SkipgraphSimulation(BamiSimulation):
         for ind, node in enumerate(self.nodes):
             self.initialize_routing_table(ind, node)
 
-        # Apply the appropriate settings
-        for node in self.nodes:
-            node.overlay.cache_search_responses = self.settings.cache_intermediate_search_results
-
         self.node_keys_sorted = sorted(self.node_keys_sorted)
 
     async def on_ipv8_ready(self) -> None:
@@ -170,12 +203,15 @@ class SkipgraphSimulation(BamiSimulation):
 
         self.online_nodes = [n for n in self.nodes]
 
+        # TODO bit of cheating here, add left/right neighbours to the routing tables with full knowledge
+        if self.settings.nb_size > 1:
+            print("Extending Skip Graph neighbourhood size to %d" % self.settings.nb_size)
+            self.extend_skip_graph_neighbourhood(3)
+
     def on_simulation_finished(self):
         """
         The experiment is finished. Write the results away.
         """
-        caching = "yes" if self.settings.cache_intermediate_search_results else "no"
-
         # Bandwidth statistics
         # with open(os.path.join(self.data_dir, "bw_usage.csv"), "w") as bw_file:
         #     bw_file.write("peer,bytes_up,bytes_down\n")
@@ -200,23 +236,29 @@ class SkipgraphSimulation(BamiSimulation):
                     hops_freq[num_hops] = 0
                 hops_freq[num_hops] += freq
 
+        tot_count = 0
+        tot = 0
         with open(os.path.join(self.data_dir, "search_hops.csv"), "w") as search_hops_file:
-            search_hops_file.write("peers,hops,freq,caching\n")
+            search_hops_file.write("peers,nb_size,hops,freq\n")
             for num_hops, freq in hops_freq.items():
-                search_hops_file.write("%d,%d,%d,%s\n" % (self.settings.peers, num_hops, freq, caching))
+                tot += num_hops * freq
+                tot_count += freq
+                search_hops_file.write("%d,%d,%d,%d\n" % (self.settings.peers, self.settings.nb_size, num_hops, freq))
+
+        print("Average search hops: %f" % (tot / tot_count))
 
         # Search latencies
         with open(os.path.join(self.data_dir, "latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,operation,time,caching\n")
+            latencies_file.write("peers,nb_size,operation,time\n")
             for node in self.nodes:
                 for latency in node.overlay.search_latencies:
-                    latencies_file.write("%d,%s,%f,%s\n" % (self.settings.peers, "search", latency, caching))
+                    latencies_file.write("%d,%d,%s,%f\n" % (self.settings.peers, self.settings.nb_size, "search", latency))
 
                 for latency in node.overlay.join_latencies:
-                    latencies_file.write("%d,%s,%f,%s\n" % (self.settings.peers, "join", latency, caching))
+                    latencies_file.write("%d,%d,%s,%f\n" % (self.settings.peers, self.settings.nb_size, "join", latency))
 
                 for latency in node.overlay.leave_latencies:
-                    latencies_file.write("%d,%s,%f,%s\n" % (self.settings.peers, "leave", latency, caching))
+                    latencies_file.write("%d,%d,%s,%f\n" % (self.settings.peers, self.settings.nb_size, "leave", latency))
 
         # Write statistics on search targets
         with open(os.path.join(self.data_dir, "search_targets.csv"), "w") as out_file:

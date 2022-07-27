@@ -37,11 +37,27 @@ class RoutingTable:
         ind = 0 if side == RIGHT else len(self.levels[level].neighbors[side]) - 1
         return nbs[ind]
 
-    def get_all(self, level: int, side: Direction) -> List[SGNode]:
-        if level >= len(self.levels):
-            return []
+    def get_best(self, level: int, side: Direction, search_target: int) -> Optional[SGNode]:
+        """
+        Return the best search result.
+        """
+        nbs = self.levels[level].neighbors[side]
+        if not nbs:
+            return None
 
-        return self.levels[level].neighbors[side]
+        best: Optional[SGNode] = nbs[0]
+        if side == RIGHT:
+            # Find the right neighbour with the largest key smaller than the search target
+            cur_ind: int = 1
+            while cur_ind <= len(nbs) - 1 and nbs[cur_ind].key <= search_target:
+                best = nbs[cur_ind]
+                cur_ind += 1
+        elif side == LEFT:
+            cur_ind: int = len(nbs) - 1
+            while cur_ind >= 0 and nbs[cur_ind].key >= search_target:
+                best = nbs[cur_ind]
+                cur_ind -= 1
+        return best
 
     def set(self, level: int, side: Direction, node: Optional[SGNode]) -> None:
         if node is None:

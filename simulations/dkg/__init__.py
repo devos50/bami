@@ -12,4 +12,4 @@ def create_aggregate_result_files(exp_name):
     with open(os.path.join("data", "kg_stats_exp_%s.csv" % exp_name), "w") as out_file:
         out_file.write("peers,replication_factor,peer,key,num_edges,storage_costs\n")
     with open(os.path.join("data", "search_hops_exp_%s.csv" % exp_name), "w") as out_file:
-        out_file.write("peers,hops,freq,caching\n")
+        out_file.write("peers,nb_size,hops,freq\n")

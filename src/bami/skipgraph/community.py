@@ -138,7 +138,7 @@ class SkipGraphCommunity(Community):
             # Search to the right
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                neighbour = self.routing_table.get(level, RIGHT)
+                neighbour = self.routing_table.get_best(level, RIGHT, payload.search_key)
                 if neighbour and neighbour.key <= payload.search_key:
                     self.forward_search(payload, peer, neighbour, payload.identifier, payload.forward_identifier,
                                         payload.originator, payload.search_key, level, payload.hops + 1)
@@ -159,8 +159,8 @@ class SkipGraphCommunity(Community):
             # Search to the left
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                neighbour = self.routing_table.get(level, LEFT)
-                if neighbour and neighbour.key >= payload.search_key:
+                neighbour = self.routing_table.get_best(level, LEFT, payload.search_key)
+                if neighbour:
                     self.forward_search(payload, peer, neighbour, payload.identifier, payload.forward_identifier,
                                         payload.originator, payload.search_key, level, payload.hops + 1)
                     return

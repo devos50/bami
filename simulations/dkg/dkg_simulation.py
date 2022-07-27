@@ -198,7 +198,7 @@ class DKGSimulation(SkipgraphSimulation):
         # Write away the search hops info
         caching = "yes" if self.settings.cache_intermediate_search_results else "no"
         with open(os.path.join(self.data_dir, "search_hops.csv"), "w") as search_hops_file:
-            search_hops_file.write("peers,hops,freq,caching\n")
+            search_hops_file.write("peers,nb_size,hops,freq\n")
             for num_hops, freq in hops_freq.items():
                 search_hops_file.write("%d,%d,%d,%s\n" % (self.settings.peers, num_hops, freq, caching))
 
