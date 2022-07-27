@@ -280,4 +280,5 @@ class DKGCommunity(SkipGraphCommunity):
         self.rule_execution_engine.start()
 
     async def unload(self):
+        await super().unload()
         self.rule_execution_engine.shutdown()

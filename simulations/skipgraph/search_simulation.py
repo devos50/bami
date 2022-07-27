@@ -13,12 +13,14 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
 
-        # Reset all search hops statistics (since introduction will also conduct a search)
+        # Reset all statistics (since introduction will also conduct a search)
         for node in self.nodes:
             node.overlay.search_hops = {}
             node.overlay.search_latencies = []
+            node.endpoint.enable_community_statistics(node.overlay.get_prefix(), False)
+            node.endpoint.enable_community_statistics(node.overlay.get_prefix(), True)
 
-        # for node in random.sample(self.nodes[1:], 30):
+        # for node in random.sample(self.nodes[1:], 40):
         #     node.overlay.is_offline = True
         #     print("Offline node: %s" % node.overlay.get_my_node())
         #     self.online_nodes.remove(node)
@@ -29,6 +31,9 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
         # for node in random.sample(self.nodes[1:], 50):
         #     node.overlay.do_censor = True
         #     honest_nodes.remove(node)
+
+        # for node in self.online_nodes:
+        #     print(node.overlay.routing_table)
 
         # Schedule some searches
         successful_searches = 0
@@ -61,9 +66,9 @@ if __name__ == "__main__":
     settings.duration = 3600
     settings.logging_level = "ERROR"
     settings.profile = False
-    settings.nb_size = 3
+    settings.nb_size = 4
     settings.enable_community_statistics = True
-    settings.num_searches = 10000
+    settings.num_searches = 1000
     settings.enable_ipv8_ticker = False
     settings.latencies_file = "data/latencies.txt"
     settings.track_failing_nodes_in_rts = False

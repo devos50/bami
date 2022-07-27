@@ -204,9 +204,8 @@ class SkipgraphSimulation(BamiSimulation):
         self.online_nodes = [n for n in self.nodes]
 
         # TODO bit of cheating here, add left/right neighbours to the routing tables with full knowledge
-        if self.settings.nb_size > 1:
-            print("Extending Skip Graph neighbourhood size to %d" % self.settings.nb_size)
-            self.extend_skip_graph_neighbourhood(3)
+        print("Extending Skip Graph neighbourhood size to %d" % self.settings.nb_size)
+        self.extend_skip_graph_neighbourhood(self.settings.nb_size)
 
     def on_simulation_finished(self):
         """
@@ -227,6 +226,16 @@ class SkipgraphSimulation(BamiSimulation):
                         msg_stats_file.write("%d,%d,%d,%d,%d,%d\n" % (ind, msg_id, network_stats.num_up,
                                                                       network_stats.num_down, network_stats.bytes_up,
                                                                       network_stats.bytes_down))
+
+            # Aggregated bw statistics
+            with open(os.path.join(self.data_dir, "aggregate_msg_statistics.csv"), "w") as msg_stats_file:
+                msg_stats_file.write("peers,peer,bytes_up,bytes_down\n")
+                for ind, node in enumerate(self.nodes):
+                    tot_up, tot_down = 0, 0
+                    for msg_id, network_stats in node.endpoint.statistics[node.overlay.get_prefix()].items():
+                        tot_up += network_stats.bytes_up
+                        tot_down += network_stats.bytes_down
+                    msg_stats_file.write("%d,%d,%d,%d\n" % (self.settings.peers, ind, network_stats.bytes_up, network_stats.bytes_down))
 
         # Search hops statistics
         hops_freq = {}
