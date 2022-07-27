@@ -1,3 +1,4 @@
+import asyncio
 import json
 import random
 from asyncio import get_event_loop, ensure_future
@@ -74,53 +75,65 @@ class DKGCommunity(SkipGraphCommunity):
     async def on_eva_error(self, peer, exception):
         self.logger.error(f'EVA Error has occurred: {exception}')
 
+    async def search_edges_with_key(self, key: int, content_hash: bytes):
+        start_time = get_event_loop().time()
+        target_node = await self.search(key)
+        if not target_node:
+            self.logger.warning("Search node with key %d failed and returned nothing.", key)
+            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+            return key, None, []
+
+        # Query the target node directly for the edges.
+        if target_node.key == self.routing_table.key:
+            triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
+            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+            return key, target_node, triplets
+        else:
+            # We send an outgoing query
+            cache = TripletsRequestCache(self)
+            self.request_cache.add(cache)
+            self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
+            triplets = await cache.future
+            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+            return key, target_node, triplets
+
     async def search_edges(self, content_hash: bytes) -> List[Triplet]:
         """
         Query the network to fetch incoming/outgoing edges of the node labelled with the content hash.
         """
-        start_time = get_event_loop().time()
         content_keys: List[int] = Content.get_keys(content_hash, num_keys=self.replication_factor)
         key_to_ind = {}
         for ind, key in enumerate(content_keys):
             key_to_ind[key] = ind
         random.shuffle(content_keys)  # For load balancing
 
-        # TODO we probably want to send search queries in parallel
         failed_indices = []
+        futures = []
+
         for attempt in range(self.replication_factor):
-            self.logger.info("Peer %s searching for edges (attempt %d/%d)" %
+            self.logger.info("Peer %s searching for edges (request %d/%d)" %
                              (self.get_my_short_id(), attempt, self.replication_factor))
             key = content_keys[attempt]
-            target_node = await self.search(key)
-            if not target_node:
-                self.logger.warning("Search node with key %d failed and returned nothing.", key)
-                self.edge_search_latencies.append(get_event_loop().time() - start_time)
-                continue
 
-            # Query the target node directly for the edges.
-            if target_node.key == self.routing_table.key:
-                triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
-                if triplets:
-                    return triplets
-            else:
-                # We send an outgoing query
-                cache = TripletsRequestCache(self)
-                self.request_cache.add(cache)
-                self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
-                triplets = await cache.future
-                if triplets:
-                    if failed_indices:
-                        # Inform the target node about our prior failed searches
-                        for failed_index in failed_indices:
-                            self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
+            futures.append(self.search_edges_with_key(key, content_hash))
 
-                    self.edge_search_latencies.append(get_event_loop().time() - start_time)
-                    return triplets
-                else:
-                    # This node did not have the triplets we were looking for...
-                    failed_indices.append(key_to_ind[key])
-                self.edge_search_latencies.append(get_event_loop().time() - start_time)
-        return []
+        search_results = await asyncio.gather(*futures)
+        for search_key, target_node, node_search_results in search_results:
+            if not node_search_results and target_node:
+                failed_indices.append((key_to_ind[search_key], target_node))
+
+        # Inform the target node about our prior failed searches
+        for failed_index, target_node in failed_indices:
+            self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
+
+        # Merge the search results
+        triplets = []
+        for _, __, node_search_results in search_results:
+            if node_search_results:
+                for triplet in node_search_results:
+                    triplets.append(triplet)
+
+        return triplets
 
     @lazy_wrapper(TripletsRequestPayload)
     def on_triplets_request(self, peer: Peer, payload: TripletsRequestPayload):

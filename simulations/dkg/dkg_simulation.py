@@ -165,11 +165,13 @@ class DKGSimulation(SkipgraphSimulation):
             random_node = random.choice(self.online_nodes)
             ensure_future(do_search(random.random() * 20, random_node, content_hash))
 
-        await sleep(30)
+        await sleep(60)
 
-        print("Failed searches: %d" % self.failed_searches)
+        print("Total searches: %d, failed searches: %d" % (self.searches_done, self.failed_searches))
 
     def on_simulation_finished(self):
+        super().on_simulation_finished()
+
         # Write away which node stores what
         with open(os.path.join(self.data_dir, "storage.csv"), "w") as out_file:
             out_file.write("content_id,peer_id\n")
@@ -187,30 +189,14 @@ class DKGSimulation(SkipgraphSimulation):
                                (self.settings.peers, self.settings.replication_factor, ind,
                                 node.overlay.routing_table.key, num_edges, storage_costs))
 
-        # Aggregate search hops statistics across nodes
-        hops_freq = {}
-        for node in self.nodes:
-            for num_hops, freq in node.overlay.search_hops.items():
-                if num_hops not in hops_freq:
-                    hops_freq[num_hops] = 0
-                hops_freq[num_hops] += freq
-
-        # Write away the search hops info
-        caching = "yes" if self.settings.cache_intermediate_search_results else "no"
-        with open(os.path.join(self.data_dir, "search_hops.csv"), "w") as search_hops_file:
-            search_hops_file.write("peers,nb_size,hops,freq\n")
-            for num_hops, freq in hops_freq.items():
-                search_hops_file.write("%d,%d,%d,%s\n" % (self.settings.peers, num_hops, freq, caching))
-
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,offline_fraction,replication_factor,with_cache,time\n")
+            latencies_file.write("peers,nb_size,offline_fraction,replication_factor,time\n")
             for node in self.nodes:
                 for latency in node.overlay.edge_search_latencies:
                     latencies_file.write("%d,%d,%d,%d,%f\n" %
-                                         (self.settings.peers, self.settings.offline_fraction,
-                                          self.settings.replication_factor,
-                                          int(self.settings.cache_intermediate_search_results), latency))
+                                         (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
+                                          self.settings.replication_factor, latency))
 
         # Write aggregated statistics away
         aggregated_file_path = os.path.join("data", "edge_searches_exp_%s.csv" % self.settings.name)

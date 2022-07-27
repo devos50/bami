@@ -5,11 +5,11 @@ from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [100, 200, 400, 800, 1600, 3200, 6400, 12800]
+PEERS = [100]
 OFFLINE_FRACTIONS = [0]
-REPLICATION_FACTORS = [1]
-EXPERIMENT_REPLICATION = 10
-ENABLE_CACHE = [True, False]
+REPLICATION_FACTORS = [2]
+NB_SIZES = [3]
+EXPERIMENT_REPLICATION = 1
 EXP_NAME = "search"
 
 
@@ -26,7 +26,7 @@ if __name__ == "__main__":
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
             for replication_factor in REPLICATION_FACTORS:
-                for enable_cache in ENABLE_CACHE:
+                for nb_size in NB_SIZES:
                     processes = []
                     for exp_num in range(EXPERIMENT_REPLICATION):
                         print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
@@ -36,16 +36,16 @@ if __name__ == "__main__":
                         settings.offline_fraction = offline_fraction
                         settings.replication_factor = replication_factor
                         settings.duration = 3600
+                        settings.nb_size = nb_size
                         settings.fast_data_injection = True
                         settings.dataset = Dataset.ETHEREUM
-                        settings.num_searches = 10000
-                        settings.max_eth_blocks = None
+                        settings.num_searches = 1000
+                        settings.max_eth_blocks = 100
                         settings.data_file_name = "blocks.json"
-                        settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, int(enable_cache))
+                        settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, nb_size)
                         settings.logging_level = "ERROR"
                         settings.enable_community_statistics = True
                         settings.enable_ipv8_ticker = False
-                        settings.cache_intermediate_search_results = enable_cache
                         settings.latencies_file = "data/latencies.txt"
 
                         p = Process(target=run, args=(settings,))
