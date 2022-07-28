@@ -8,8 +8,8 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 PEERS = [1600]
 OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 REPLICATION_FACTORS = [1, 2, 3, 4, 5]
-EXPERIMENT_REPLICATION = 10
-ENABLE_CACHE = [True]
+EXPERIMENT_REPLICATION = 1
+NB_SIZES = [3]
 EXP_NAME = "search_fail_rep"
 
 
@@ -26,7 +26,7 @@ if __name__ == "__main__":
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
             for replication_factor in REPLICATION_FACTORS:
-                for enable_cache in ENABLE_CACHE:
+                for nb_size in NB_SIZES:
                     processes = []
                     for exp_num in range(EXPERIMENT_REPLICATION):
                         print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
@@ -41,11 +41,11 @@ if __name__ == "__main__":
                         settings.num_searches = 10000
                         settings.max_eth_blocks = None
                         settings.data_file_name = "blocks.json"
-                        settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, int(enable_cache))
+                        settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, nb_size)
                         settings.logging_level = "ERROR"
                         settings.enable_community_statistics = True
                         settings.enable_ipv8_ticker = False
-                        settings.cache_intermediate_search_results = enable_cache
+                        settings.nb_size = nb_size
                         settings.latencies_file = "data/latencies.txt"
 
                         p = Process(target=run, args=(settings,))
