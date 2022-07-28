@@ -8,7 +8,7 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 PEERS = [1600]
 OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 REPLICATION_FACTORS = [1, 2, 3, 4, 5]
-EXPERIMENT_REPLICATION = 1
+EXPERIMENT_REPLICATION = 10
 NB_SIZES = [3]
 EXP_NAME = "search_fail_rep"
 
@@ -25,9 +25,9 @@ if __name__ == "__main__":
 
     for num_peers in PEERS:
         for offline_fraction in OFFLINE_FRACTIONS:
+            processes = []
             for replication_factor in REPLICATION_FACTORS:
                 for nb_size in NB_SIZES:
-                    processes = []
                     for exp_num in range(EXPERIMENT_REPLICATION):
                         print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
                         settings = DKGSimulationSettings()
@@ -52,5 +52,5 @@ if __name__ == "__main__":
                         p.start()
                         processes.append(p)
 
-                    for p in processes:
-                        p.join()
+            for p in processes:
+                p.join()
