@@ -144,7 +144,7 @@ class DKGSimulation(SkipgraphSimulation):
         # Make some nodes malicious
         malicious_nodes = set()
         if self.settings.malicious_fraction > 0:
-            num_malicious: int = int(len(self.nodes) * (self.settings.num_malicious / 100))
+            num_malicious: int = int(len(self.nodes) * (self.settings.malicious_fraction / 100))
             print("Making %d nodes malicious..." % num_malicious)
             for node in random.sample(self.online_nodes, num_malicious):
                 node.overlay.is_malicious = True
