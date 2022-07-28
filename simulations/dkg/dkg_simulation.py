@@ -24,7 +24,7 @@ class DKGSimulation(SkipgraphSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
-        builder.add_key("my peer", "curve25519", os.path.join(self.data_dir, f"ec{peer_id}.pem"))
+        builder.add_key("my peer", "curve25519", None)
         builder.add_overlay("DKGCommunity", "my peer", [], [], {}, [])
         return builder
 
