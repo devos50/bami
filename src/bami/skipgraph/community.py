@@ -33,7 +33,7 @@ class SkipGraphCommunity(Community):
         self.peers_info: Dict[Peer, SGNode] = {}
         self.routing_table: Optional[RoutingTable] = None
         self.is_offline: bool = False
-        self.do_censor: bool = False
+        self.is_malicious: bool = False
 
         self.request_cache = RequestCache()
 
@@ -119,7 +119,7 @@ class SkipGraphCommunity(Community):
     def handle_search_request(self, peer: Peer, payload: SearchPayload):
         originator_node = SGNode.from_payload(payload.originator)
 
-        if self.do_censor:
+        if self.is_malicious:
             response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
             self.ez_send(originator_node.get_peer(), response_payload)
             return
