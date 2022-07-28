@@ -5,11 +5,11 @@ from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [100]
+PEERS = [100, 200, 400, 800, 1600, 3200, 6400, 12800]
 OFFLINE_FRACTIONS = [0]
-REPLICATION_FACTORS = [2]
-NB_SIZES = [3]
-EXPERIMENT_REPLICATION = 1
+REPLICATION_FACTORS = [1]
+NB_SIZES = [1, 3]
+EXPERIMENT_REPLICATION = 10
 EXP_NAME = "search"
 
 
