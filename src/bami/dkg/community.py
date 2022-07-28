@@ -78,15 +78,16 @@ class DKGCommunity(SkipGraphCommunity):
     async def search_edges_with_key(self, key: int, content_hash: bytes):
         sg_search_start_time = get_event_loop().time()
         target_node = await self.search(key)
+        sg_search_time = get_event_loop().time() - sg_search_start_time
         if not target_node:
             self.logger.warning("Search node with key %d failed and returned nothing.", key)
-            self.edge_search_latencies.append((get_event_loop().time() - sg_search_start_time, 0))
+            self.edge_search_latencies.append((sg_search_time, 0))
             return key, None, []
 
         # Query the target node directly for the edges.
         if target_node.key == self.routing_table.key:
             triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
-            self.edge_search_latencies.append((get_event_loop().time() - sg_search_start_time, 0))
+            self.edge_search_latencies.append((sg_search_time, 0))
             return key, target_node, triplets
         else:
             # We send an outgoing query
@@ -95,8 +96,7 @@ class DKGCommunity(SkipGraphCommunity):
             self.request_cache.add(cache)
             self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
             triplets = await cache.future
-            self.edge_search_latencies.append((get_event_loop().time() - sg_search_start_time,
-                                               get_event_loop().time() - eva_start_time))
+            self.edge_search_latencies.append((sg_search_time, get_event_loop().time() - eva_start_time))
             return key, target_node, triplets
 
     async def search_edges(self, content_hash: bytes) -> List[Triplet]:
