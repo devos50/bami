@@ -40,7 +40,7 @@ if __name__ == "__main__":
                         settings.fast_data_injection = True
                         settings.dataset = Dataset.ETHEREUM
                         settings.num_searches = 1000
-                        settings.max_eth_blocks = 100
+                        settings.max_eth_blocks = None
                         settings.data_file_name = "blocks.json"
                         settings.identifier = "%d_%d_%d_%d" % (offline_fraction, replication_factor, exp_num, nb_size)
                         settings.logging_level = "ERROR"

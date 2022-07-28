@@ -3,7 +3,7 @@ import json
 import random
 from asyncio import get_event_loop, ensure_future
 from binascii import unhexlify, hexlify
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from bami.dkg.cache import StorageRequestCache, TripletsRequestCache, IsStoringQueryCache
 from bami.dkg.content import Content
@@ -35,7 +35,7 @@ class DKGCommunity(SkipGraphCommunity):
                                                                               self.my_peer.key,
                                                                               self.on_new_triplets_generated)
 
-        self.edge_search_latencies: List[float] = []  # Keep track of the latency of individual edge searches
+        self.edge_search_latencies: List[Tuple[float, float]] = []  # Keep track of the latency of individual edge searches
 
         self.eva = EVAProtocol(self, self.on_eva_receive, self.on_eva_send_complete, self.on_eva_error)
         self.eva.settings.max_simultaneous_transfers = 10000
@@ -76,25 +76,27 @@ class DKGCommunity(SkipGraphCommunity):
         self.logger.error(f'EVA Error has occurred: {exception}')
 
     async def search_edges_with_key(self, key: int, content_hash: bytes):
-        start_time = get_event_loop().time()
+        sg_search_start_time = get_event_loop().time()
         target_node = await self.search(key)
         if not target_node:
             self.logger.warning("Search node with key %d failed and returned nothing.", key)
-            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+            self.edge_search_latencies.append((get_event_loop().time() - sg_search_start_time, 0))
             return key, None, []
 
         # Query the target node directly for the edges.
         if target_node.key == self.routing_table.key:
             triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
-            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+            self.edge_search_latencies.append((get_event_loop().time() - sg_search_start_time, 0))
             return key, target_node, triplets
         else:
             # We send an outgoing query
+            eva_start_time = get_event_loop().time()
             cache = TripletsRequestCache(self)
             self.request_cache.add(cache)
             self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
             triplets = await cache.future
-            self.edge_search_latencies.append(get_event_loop().time() - start_time)
+            self.edge_search_latencies.append((get_event_loop().time() - sg_search_start_time,
+                                               get_event_loop().time() - eva_start_time))
             return key, target_node, triplets
 
     async def search_edges(self, content_hash: bytes) -> List[Triplet]:

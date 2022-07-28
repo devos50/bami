@@ -160,8 +160,9 @@ class DKGSimulation(SkipgraphSimulation):
             if self.searches_done % 100 == 0:
                 print("Completed %d searches..." % self.searches_done)
 
+        list_content_with_triplets = list(content_with_triplets)
         for _ in range(self.settings.num_searches):
-            content_hash = random.choice(list(content_with_triplets))
+            content_hash = random.choice(list_content_with_triplets)
             random_node = random.choice(self.online_nodes)
             ensure_future(do_search(random.random() * 20, random_node, content_hash))
 
@@ -191,12 +192,18 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:
-            latencies_file.write("peers,nb_size,offline_fraction,replication_factor,time\n")
+            latencies_file.write("peers,nb_size,offline_fraction,replication_factor,part,time\n")
             for node in self.nodes:
                 for latency in node.overlay.edge_search_latencies:
-                    latencies_file.write("%d,%d,%d,%d,%f\n" %
+                    latencies_file.write("%d,%d,%d,%d,sg,%f\n" %
                                          (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
-                                          self.settings.replication_factor, latency))
+                                          self.settings.replication_factor, latency[0]))
+                    latencies_file.write("%d,%d,%d,%d,eva,%f\n" %
+                                         (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
+                                          self.settings.replication_factor, latency[1]))
+                    latencies_file.write("%d,%d,%d,%d,total,%f\n" %
+                                         (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
+                                          self.settings.replication_factor, latency[0] + latency[1]))
 
         # Write aggregated statistics away
         aggregated_file_path = os.path.join("data", "edge_searches_exp_%s.csv" % self.settings.name)
