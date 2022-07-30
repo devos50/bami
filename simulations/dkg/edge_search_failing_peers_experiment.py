@@ -11,7 +11,7 @@ MALICIOUS_FRACTIONS = [0]
 REPLICATION_FACTORS = [5]
 EXPERIMENT_REPLICATION = 10
 NB_SIZES = [5]
-EXP_NAME = "search_fail_nbsizes"
+EXP_NAME = "search_fail_peers"
 
 
 def run(settings):
