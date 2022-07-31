@@ -8,9 +8,9 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 PEERS = [800, 1600, 3200, 6400, 12800]
 OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 MALICIOUS_FRACTIONS = [0]
-REPLICATION_FACTORS = [5]
+REPLICATION_FACTORS = [3]
 EXPERIMENT_REPLICATION = 10
-NB_SIZES = [5]
+NB_SIZES = [3]
 EXP_NAME = "search_fail_peers"
 
 
