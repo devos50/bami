@@ -49,6 +49,7 @@ class DKGCommunity(SkipGraphCommunity):
 
         self.replication_factor: int = 2
         self.should_verify_key: bool = True
+        self.is_malicious: bool = False
 
         self.logger.info("The DKG community started!")
 
@@ -139,7 +140,10 @@ class DKGCommunity(SkipGraphCommunity):
 
     @lazy_wrapper(TripletsRequestPayload)
     def on_triplets_request(self, peer: Peer, payload: TripletsRequestPayload):
-        triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
+        triplets: List[Triplet] = []
+        if not self.is_malicious:
+            triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
+
         triplets_payload = TripletsPayload([triplet.to_payload() for triplet in triplets])
         serialized_payload = self.serializer.pack_serializable(triplets_payload)
         info_json = {"type": "search_response", "id": payload.identifier, "cid": hexlify(payload.content).decode()}
