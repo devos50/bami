@@ -6,12 +6,12 @@ from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
 PEERS = [1600]
-OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-MALICIOUS_FRACTIONS = [0]
+OFFLINE_FRACTIONS = [0]
+MALICIOUS_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 REPLICATION_FACTORS = [1, 2, 3, 4, 5]
 EXPERIMENT_REPLICATION = 10
 NB_SIZES = [3]
-EXP_NAME = "search_fail_rep"
+EXP_NAME = "search_mal_rep"
 
 
 def run(settings):

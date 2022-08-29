@@ -8,10 +8,10 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 PEERS = [1600]
 OFFLINE_FRACTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 MALICIOUS_FRACTIONS = [0]
-REPLICATION_FACTORS = [1, 2, 3, 4, 5]
+REPLICATION_FACTORS = [3]
 EXPERIMENT_REPLICATION = 10
-NB_SIZES = [3]
-EXP_NAME = "search_fail_rep"
+NB_SIZES = [1, 2, 3, 4, 5]
+EXP_NAME = "search_fail_nbsizes"
 
 
 def run(settings):
