@@ -62,7 +62,7 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
 
         # Give node 1 a left neighbour on level 0
         self.nodes[1].overlay.routing_table.levels[0].neighbors[LEFT] = \
-            SGNode(UDPv4Address("1.1.1.1", 1234), b"1234", 42, MembershipVector.from_bytes(b""))
+            [SGNode(UDPv4Address("1.1.1.1", 1234), b"1234", 42, MembershipVector.from_bytes(b""))]
 
         found, node = await self.nodes[0].overlay.get_neighbour(self.nodes[1].overlay.my_peer, LEFT, 0)
         assert found
@@ -104,7 +104,7 @@ class TestSkipGraphCommunity(TestSkipGraphCommunityBase):
         assert result.key == 1
 
 
-class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
+class TestSkipGraphCommunityFourNodesBase(TestSkipGraphCommunityBase):
     NUM_NODES = 4
 
     def setUp(self):
@@ -123,6 +123,9 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityBase):
         # Disable caching
         for node in self.nodes:
             node.overlay.cache_search_responses = False
+
+
+class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityFourNodesBase):
 
     async def test_join(self):
         """

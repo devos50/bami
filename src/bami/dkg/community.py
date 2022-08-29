@@ -129,12 +129,13 @@ class DKGCommunity(SkipGraphCommunity):
         for failed_index, target_node in failed_indices:
             self.ez_send(target_node.get_peer(), SearchFailurePayload(content_hash, failed_index))
 
-        # Merge the search results
+        # Merge the search results and remove duplicates
         triplets = []
         for _, __, node_search_results in search_results:
             if node_search_results:
                 for triplet in node_search_results:
-                    triplets.append(triplet)
+                    if triplet not in triplets:
+                        triplets.append(triplet)
 
         return triplets
 
@@ -158,6 +159,7 @@ class DKGCommunity(SkipGraphCommunity):
             return
 
         content_keys: List[int] = Content.get_keys(content.identifier, num_keys=self.replication_factor)
+        print(content_keys)
         # TODO this should be done in parallel
         for ind in range(self.replication_factor):
             target_node: Optional[SGNode] = await self.search(content_keys[ind])

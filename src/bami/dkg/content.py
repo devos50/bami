@@ -1,8 +1,9 @@
 import hashlib
-from typing import List
+from typing import List, Optional
 
 
 class Content:
+    custom_keys: Optional[List[int]] = None  # For testing purposes
 
     def __init__(self, identifier: bytes, data: bytes) -> None:
         self.identifier: bytes = identifier
@@ -14,6 +15,9 @@ class Content:
         Return the keys of this content item, an integer between 0 and 2^32.
         We can generate multiple keys, e.g., when we want to store this content at multiple nodes.
         """
+        if Content.custom_keys:
+            return Content.custom_keys
+
         keys: List[int] = []
         for ind in range(num_keys):
             h = hashlib.sha1()

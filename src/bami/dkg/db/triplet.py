@@ -27,3 +27,6 @@ class Triplet:
 
     def __str__(self) -> str:
         return "<%s, %s, %s>" % (self.head.decode(), self.relation.decode(), self.tail.decode())
+
+    def __eq__(self, other):
+        return self.head == other.head and self.relation == other.relation and self.tail == other.tail
