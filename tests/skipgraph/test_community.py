@@ -45,8 +45,8 @@ class TestSkipGraphCommunityBase(TestBase):
         """
         for node in self.nodes:
             for level in node.overlay.routing_table.levels:
-                assert not level.neighbors[LEFT] or level.neighbors[LEFT].key != node.overlay.routing_table.key
-                assert not level.neighbors[RIGHT] or level.neighbors[RIGHT].key != node.overlay.routing_table.key
+                assert not level.neighbors[LEFT] or node.overlay.get_my_node() not in level.neighbors[LEFT]
+                assert not level.neighbors[RIGHT] or node.overlay.get_my_node() not in level.neighbors[RIGHT]
 
 
 class TestSkipGraphCommunity(TestSkipGraphCommunityBase):

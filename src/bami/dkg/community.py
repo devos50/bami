@@ -49,7 +49,6 @@ class DKGCommunity(SkipGraphCommunity):
 
         self.replication_factor: int = 2
         self.should_verify_key: bool = True
-        self.is_malicious: bool = False
 
         self.logger.info("The DKG community started!")
 
@@ -159,7 +158,6 @@ class DKGCommunity(SkipGraphCommunity):
             return
 
         content_keys: List[int] = Content.get_keys(content.identifier, num_keys=self.replication_factor)
-        print(content_keys)
         # TODO this should be done in parallel
         for ind in range(self.replication_factor):
             target_node: Optional[SGNode] = await self.search(content_keys[ind])

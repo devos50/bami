@@ -1,7 +1,7 @@
 import random
-from asyncio import get_event_loop, ensure_future
+from asyncio import get_event_loop
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict, List, Set
+from typing import Optional, Dict, List
 
 from ipv8.util import fail
 
@@ -62,8 +62,7 @@ class SkipGraphCommunity(Community):
         self.leave_latencies: List[float] = []   # Keep track of the latency of leave operations
 
         self.is_leaving: bool = False  # Whether we are leaving the Skip Graph
-
-        self.cache_search_responses: bool = True  # Whether we cache intermediate search responses
+        self.is_malicious: bool = False  # Whether we are a malicious peer
 
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
 
@@ -84,6 +83,9 @@ class SkipGraphCommunity(Community):
 
     def forward_search(self, received_payload: SearchPayload, from_peer: Peer, to_node: SGNode, search_id: int,
                        forward_id: int, originator: SGNode, search_key: int, level: int, hops: int):
+        if self.is_malicious:
+            return  # Malicious peers pretend like they forwarded the search request but in reality the didn't.
+
         self.logger.debug("Peer %s (key %d) forwarding search request for key %d to peer %s (key %d)",
                           self.get_my_short_id(), self.routing_table.key, search_key,
                           self.get_short_id(to_node.public_key), to_node.key)

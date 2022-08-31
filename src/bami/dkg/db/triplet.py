@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List
 
 from bami.dkg.payloads import TripletPayload, RulePayload
 
@@ -30,3 +30,6 @@ class Triplet:
 
     def __eq__(self, other):
         return self.head == other.head and self.relation == other.relation and self.tail == other.tail
+
+    def __hash__(self):
+        return hash(self.head + self.relation + self.tail)
