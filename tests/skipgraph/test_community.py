@@ -175,7 +175,7 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityFourNodesBase):
         for node in self.nodes[1:]:
             await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
 
-        # These searches should be routed as follows: 21 -> 33 -> 21
+        # These searches should be routed as follows: 99 -> 33 -> 21
         res: SGNode = await self.get_node_with_key(99).overlay.search(21)
         assert res.key == 21
         res: SGNode = await self.get_node_with_key(99).overlay.search(20)
@@ -185,6 +185,18 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityFourNodesBase):
         res: SGNode = await self.get_node_with_key(99).overlay.search(34)
         assert res.key == 33
 
+        # This search should be routed as follows: 21 -> 36 -> 99
+        res: SGNode = await self.get_node_with_key(21).overlay.search(99)
+        assert res.key == 99
+
+        # This search should be routed as follows: 21 -> 36
+        res: SGNode = await self.get_node_with_key(21).overlay.search(45)
+        assert res.key == 36
+
+        # Search for yourself
+        res: SGNode = await self.get_node_with_key(99).overlay.search(99)
+        assert res.key == 99
+
     async def test_search_with_node_failure(self):
         """
         Test searching in a Skip Graph with four nodes and node failures.
@@ -193,11 +205,11 @@ class TestSkipGraphCommunityFourNodes(TestSkipGraphCommunityFourNodesBase):
         for node in self.nodes[1:]:
             await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
 
-        self.nodes[2].overlay.is_offline = True
+        self.get_node_with_key(33).overlay.is_offline = True
 
-        # With node 33 not responding, we get node 36 as result.
+        # Even though node 33 does not respond, we should get node 21 as result.
         res: SGNode = await self.get_node_with_key(99).overlay.search(21)
-        assert res.key == 36
+        assert res.key == 21
 
 
 class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
@@ -317,14 +329,14 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
             result = await node.overlay.search(20)
             assert result.key == 13  # Node 13 is the greatest number closest to 20, our search.
 
-            result = await self.nodes[0].overlay.search(13)
-            assert result.key == 13
+        result = await self.get_node_with_key(13).overlay.search(13)
+        assert result.key == 13
 
-            result = await self.nodes[0].overlay.search(22)
-            assert result.key == 21
+        result = await self.get_node_with_key(13).overlay.search(22)
+        assert result.key == 21
 
-            result = await self.nodes[0].overlay.search(100)
-            assert result.key == 99
+        result = await self.get_node_with_key(13).overlay.search(100)
+        assert result.key == 99
 
-            result = await self.nodes[1].overlay.search(40)
-            assert result.key == 36
+        result = await self.get_node_with_key(21).overlay.search(40)
+        assert result.key == 36
