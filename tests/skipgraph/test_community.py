@@ -331,6 +331,7 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
 
         result = await self.get_node_with_key(13).overlay.search(13)
         assert result.key == 13
+        assert 0 in self.get_node_with_key(13).overlay.search_hops
 
         result = await self.get_node_with_key(13).overlay.search(22)
         assert result.key == 21
@@ -340,3 +341,16 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
 
         result = await self.get_node_with_key(21).overlay.search(40)
         assert result.key == 36
+
+    async def test_search_with_inactive_nodes(self):
+        """
+        Test whether we can deal with inactive nodes when searching.
+        """
+        await self.introduce_nodes()
+
+        for node in self.nodes[1:]:
+            await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
+
+        result = await self.get_node_with_key(21).overlay.search(40)
+        assert result.key == 36
+        assert 2 in self.get_node_with_key(21).overlay.search_hops

@@ -1,9 +1,8 @@
 from asyncio import Future, get_event_loop
+from typing import Set, Optional
 
 from bami.skipgraph.node import SGNode
-from bami.skipgraph.payload import SearchPayload
 from ipv8.requestcache import RandomNumberCache
-from ipv8.types import Peer
 
 
 class NeighbourRequestCache(RandomNumberCache):
@@ -27,40 +26,19 @@ class BuddyCache(RandomNumberCache):
         self.future = Future()
 
 
-class SearchRequestCache(RandomNumberCache):
+class SearchCache(RandomNumberCache):
+    """
+    This cache keeps track of the status of the ongoing search.
+    """
 
-    def __init__(self, community):
+    def __init__(self, community, search_key: int, level: int):
         super().__init__(community.request_cache, "search")
-        self.future = Future()
+        self.search_key: int = search_key
+        self.level: int = level
+        self.hops: int = 0
+        self.next_nodes_future: Optional[Future] = None
         self.start_time = get_event_loop().time()
-
-    @property
-    def timeout_delay(self):
-        return 20.0
-
-    def on_timeout(self):
-        self.future.set_result(None)
-
-
-class SearchForwardRequestCache(RandomNumberCache):
-    """
-    Cache to keep track of search forwards.
-    """
-    SEARCH_TIMEOUT = 1.0
-
-    def __init__(self, community, payload: SearchPayload, from_peer: Peer, to_node: SGNode):
-        super().__init__(community.request_cache, "forward-search")
-        self.community = community
-        self.payload = payload
-        self.from_peer: Peer = from_peer
-        self.to_node: SGNode = to_node
-
-    @property
-    def timeout_delay(self):
-        return self.SEARCH_TIMEOUT
-
-    def on_timeout(self):
-        self.community.on_search_forward_timeout(self)
+        self.nodes: Set[SGNode] = set()
 
 
 class DeleteCache(RandomNumberCache):

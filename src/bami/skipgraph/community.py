@@ -1,19 +1,19 @@
 import random
-from asyncio import get_event_loop
+from asyncio import get_event_loop, Future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List
 
 from ipv8.util import fail
 
 from bami.skipgraph import RIGHT, LEFT, Direction
-from bami.skipgraph.cache import SearchRequestCache, NeighbourRequestCache, LinkRequestCache, BuddyCache, DeleteCache, \
-    FindNewNeighbourCache, SetNeighbourNilCache, SearchForwardRequestCache
+from bami.skipgraph.cache import SearchCache, NeighbourRequestCache, LinkRequestCache, BuddyCache, DeleteCache, \
+    FindNewNeighbourCache, SetNeighbourNilCache
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
-from bami.skipgraph.payload import SearchPayload, SearchResponsePayload, NodeInfoPayload, NeighbourRequestPayload, \
-    NeighbourResponsePayload, GetLinkPayload, SetLinkPayload, \
+from bami.skipgraph.payload import SearchNextNodesRequestPayload, NodeInfoPayload, \
+    NeighbourRequestPayload, NeighbourResponsePayload, GetLinkPayload, SetLinkPayload, \
     BuddyPayload, DeletePayload, NoNeighbourPayload, FindNewNeighbourPayload, ConfirmDeletePayload, \
-    FoundNewNeighbourPayload, SetNeighbourNilPayload, SearchIntermediateResponsePayload
+    FoundNewNeighbourPayload, SetNeighbourNilPayload, SearchNextNodesResponsePayload
 from bami.skipgraph.routing_table import RoutingTable
 from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
@@ -37,9 +37,8 @@ class SkipGraphCommunity(Community):
         self.request_cache = RequestCache()
 
         # Search messages
-        self.add_message_handler(SearchPayload, self.on_search_request)
-        self.add_message_handler(SearchResponsePayload, self.on_search_response)
-        self.add_message_handler(SearchIntermediateResponsePayload, self.on_search_intermediate_response)
+        self.add_message_handler(SearchNextNodesRequestPayload, self.on_search_next_nodes_request)
+        self.add_message_handler(SearchNextNodesResponsePayload, self.on_search_next_nodes_response)
 
         # Join messages
         self.add_message_handler(NeighbourRequestPayload, self.on_neighbour_request)
@@ -80,157 +79,6 @@ class SkipGraphCommunity(Community):
     def get_my_node(self) -> SGNode:
         my_pk = self.my_peer.public_key.key_to_bin()
         return SGNode(self.my_estimated_wan, my_pk, self.routing_table.key, self.routing_table.mv)
-
-    def forward_search(self, received_payload: SearchPayload, from_peer: Peer, to_node: SGNode, search_id: int,
-                       forward_id: int, originator: SGNode, search_key: int, level: int, hops: int):
-        if self.is_malicious:
-            return  # Malicious peers pretend like they forwarded the search request but in reality the didn't.
-
-        self.logger.debug("Peer %s (key %d) forwarding search request for key %d to peer %s (key %d)",
-                          self.get_my_short_id(), self.routing_table.key, search_key,
-                          self.get_short_id(to_node.public_key), to_node.key)
-
-        cache = SearchForwardRequestCache(self, received_payload, from_peer, to_node)
-        self.request_cache.add(cache)
-
-        response_payload = SearchPayload(search_id, cache.number, originator, search_key, level, hops)
-        self.ez_send(to_node.get_peer(), response_payload)
-
-        # Also send a message back to the node that sent us the search request
-        response_payload = SearchIntermediateResponsePayload(forward_id, to_node.to_payload())
-        self.ez_send(from_peer, response_payload)
-
-    @lazy_wrapper(SearchPayload)
-    def on_search_request(self, peer: Peer, payload: SearchPayload):
-        """
-        Logic when receiving a search request.
-        Note that the logic is slightly modified according to https://github.com/abelab/sgsim/blob/main/src/sg.py#L328.
-        """
-        if self.is_offline:
-            return
-
-        self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d, "
-                         "ID: %d, FW ID: %d)",
-                         self.get_my_short_id(), self.routing_table.key,
-                         self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level,
-                         payload.identifier, payload.forward_identifier)
-
-        self.handle_search_request(peer, payload)
-
-    def handle_search_request(self, peer: Peer, payload: SearchPayload):
-        originator_node = SGNode.from_payload(payload.originator)
-
-        if self.routing_table.key == payload.search_key:
-            # Send this nodes' info back to the search originator
-            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
-            self.ez_send(originator_node.get_peer(), response_payload)
-
-            # Also send a message back to the node that sent us the search request
-            response_payload = SearchIntermediateResponsePayload(payload.forward_identifier, originator_node.to_payload())
-            self.ez_send(peer, response_payload)
-            return
-
-        if self.routing_table.key < payload.search_key:
-            # Search to the right
-            level = min(payload.level, self.routing_table.height() - 1)
-            while level >= 0:
-                neighbour = self.routing_table.get_best(level, RIGHT, payload.search_key)
-                if neighbour and neighbour.key <= payload.search_key:
-                    self.forward_search(payload, peer, neighbour, payload.identifier, payload.forward_identifier,
-                                        payload.originator, payload.search_key, level, payload.hops + 1)
-                    return
-                else:
-                    level -= 1
-
-            # We exhausted our search to the right - return ourselves as result to the search originator
-            self.logger.debug("Peer %s (key: %d) exhausted search to the right - returning self as search result",
-                              self.get_my_short_id(), self.routing_table.key)
-            response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(), payload.hops)
-            self.ez_send(originator_node.get_peer(), response_payload)
-
-            # Also send a message back to the node that sent us the search request
-            response_payload = SearchIntermediateResponsePayload(payload.forward_identifier, originator_node.to_payload())
-            self.ez_send(peer, response_payload)
-        else:
-            # Search to the left
-            level = min(payload.level, self.routing_table.height() - 1)
-            while level >= 0:
-                neighbour = self.routing_table.get_best(level, LEFT, payload.search_key)
-                if neighbour:
-                    self.forward_search(payload, peer, neighbour, payload.identifier, payload.forward_identifier,
-                                        payload.originator, payload.search_key, level, payload.hops + 1)
-                    return
-                else:
-                    level -= 1
-
-            # Search to the left exhausted - return the left neighbour if it exists, otherwise return ourselves
-            left_neighbour = self.routing_table.get(0, LEFT)
-            if left_neighbour:
-                self.logger.debug("Peer %s (key %d) exhausted search - returning left neighbour as search result",
-                                  self.get_my_short_id(), self.routing_table.key)
-                self.forward_search(payload, peer, left_neighbour, payload.identifier, payload.forward_identifier,
-                                    payload.originator, payload.search_key, 0, payload.hops + 1)
-            else:
-                # We also don't have a left neighbour - return ourselves as last resort
-                response_payload = SearchResponsePayload(payload.identifier, self.get_my_node().to_payload(),
-                                                         payload.hops)
-                self.ez_send(originator_node.get_peer(), response_payload)
-
-                # Also send a message back to the node that sent us the search request
-                response_payload = SearchIntermediateResponsePayload(payload.forward_identifier, originator_node.to_payload())
-                self.ez_send(peer, response_payload)
-
-    @lazy_wrapper(SearchResponsePayload)
-    def on_search_response(self, peer: Peer, payload: SearchResponsePayload):
-        if self.is_offline:
-            return
-
-        self.logger.info("Peer %s received search response from peer %s (resulting key: %d, hops: %d)",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
-                         payload.response.key, payload.hops)
-
-        if not self.request_cache.has("search", payload.identifier):
-            self.logger.warning("search cache with id %s not found", payload.identifier)
-            return
-
-        cache = self.request_cache.pop("search", payload.identifier)
-
-        if payload.hops not in self.search_hops:
-            self.search_hops[payload.hops] = 0
-        self.search_hops[payload.hops] += 1
-        self.search_latencies.append(get_event_loop().time() - cache.start_time)
-
-        node = SGNode.from_payload(payload.response)
-        cache.future.set_result(node)
-
-    @lazy_wrapper(SearchIntermediateResponsePayload)
-    def on_search_intermediate_response(self, peer: Peer, payload: SearchIntermediateResponsePayload):
-        if self.is_offline:
-            return
-
-        self.logger.info("Peer %s received intermediate search response from peer %s",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()))
-
-        if not self.request_cache.has("forward-search", payload.identifier):
-            self.logger.warning("forward-search cache with id %s not found", payload.identifier)
-            return
-
-        self.request_cache.pop("forward-search", payload.identifier)
-
-    def on_search_forward_timeout(self, cache: SearchForwardRequestCache):
-        """
-        The search forward failed and we have to find an alternative route.
-        """
-        self.logger.warning("Search forward cache with ID %d timed out - peer %s with key %d failed",
-                            cache.number, self.get_short_id(cache.to_node.public_key), cache.to_node.key)
-
-        # Remove the failing node from the routing table and the cache
-        self.routing_table.remove_node(cache.to_node.key)
-
-        # Initiate the search request again
-        self.handle_search_request(cache.from_peer, cache.payload)
-
-        # TODO we should start to replace this node with someone else
 
     async def get_neighbour(self, peer: Peer, side: Direction, level: int) -> Optional[SGNode]:
         """
@@ -279,34 +127,133 @@ class SkipGraphCommunity(Community):
         cache = self.request_cache.pop("neighbour", payload.identifier)
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
-    async def search(self, key: int, introducer_node: Optional[SGNode] = None) -> SGNode:
+    async def search(self, key: int, introducer_node: Optional[SGNode] = None) -> Optional[SGNode]:
         self.logger.info("Peer %s (key %d) initiating search for key %d",
                          self.get_my_short_id(), self.routing_table.key, key)
 
-        cache = SearchRequestCache(self)
+        cache = SearchCache(self, key, self.routing_table.height() - 1)
         self.request_cache.add(cache)
 
-        if introducer_node:
-            forward_cache = SearchForwardRequestCache(self, None, self.my_peer, self.get_my_node())
-            self.request_cache.add(forward_cache)
-            self.ez_send(introducer_node.get_peer(), SearchPayload(cache.number, forward_cache.number,
-                                                                   self.get_my_node().to_payload(),
-                                                                   key, self.routing_table.height() - 1, 0))
+        if introducer_node:  # This is a search when joining the skip graph
+            cache.nodes.add(introducer_node)
         else:
             if not self.routing_table:
                 self.logger.error("Routing table not initialized! Failing search")
                 return fail("Routing table not initialized!")
 
-            # This is a regular search. Send a Search message to yourself to initiate the search.
-            payload = SearchPayload(cache.number, 0, self.get_my_node().to_payload(),
-                                    key, self.routing_table.height() - 1, 0)
-            forward_cache = SearchForwardRequestCache(self, payload, self.my_peer, self.get_my_node())
-            self.request_cache.add(forward_cache)
-            payload.forward_identifier = forward_cache.number
-            self.ez_send(self.my_peer, payload)
+            if key == self.routing_table.key:
+                return self.get_my_node()
 
-        response = await cache.future
-        return response
+            cache.nodes.add(self.get_my_node())
+
+        result: Optional[SGNode] = None
+        while True:
+            # Select the next eligible node
+            # TODO for now we assume we only have one eligible node every time
+            cache.hops += 1
+            current_node = list(cache.nodes)[0]
+            next_nodes = await self.get_next_nodes_for_search(cache, current_node)
+            if next_nodes[0] == current_node:
+                # We found the best node
+                result = next_nodes[0]
+                break
+
+            cache.nodes = set(next_nodes)
+
+        hops = cache.hops - 1  # We should exclude request to ourselves
+        if hops not in self.search_hops:
+            self.search_hops[hops] = 0
+        self.search_hops[hops] += 1
+        self.search_latencies.append(get_event_loop().time() - cache.start_time)
+
+        self.request_cache.pop("search", cache.number)
+
+        return result
+
+    async def get_next_nodes_for_search(self, cache: SearchCache, current_node: SGNode):
+        peer_pk = current_node.get_peer().public_key.key_to_bin()
+        self.logger.debug("Peer %s (key %d) sending request for next nodes to peer %s (key %d) during search for "
+                          "key %d", self.get_my_short_id(), self.routing_table.key, self.get_short_id(peer_pk),
+                          current_node.key, cache.search_key)
+        payload = SearchNextNodesRequestPayload(cache.number, cache.search_key, cache.level)
+        cache.next_nodes_future = Future()
+        self.ez_send(current_node.get_peer(), payload)
+        return await cache.next_nodes_future
+
+    @lazy_wrapper(SearchNextNodesRequestPayload)
+    def on_search_next_nodes_request(self, peer: Peer, payload: SearchNextNodesRequestPayload):
+        if self.is_offline:
+            return
+
+        self.logger.info("Peer %s (key %d) received next nodes request during search from peer %s for key %d "
+                         "(start at level %d, ID: %d)", self.get_my_short_id(), self.routing_table.key,
+                         self.get_short_id(peer.public_key.key_to_bin()), payload.search_key, payload.level,
+                         payload.identifier)
+
+        if self.routing_table.key == payload.search_key:
+            response_payload = SearchNextNodesResponsePayload(
+                payload.identifier, self.get_my_node().to_payload(), payload.level)
+            self.ez_send(peer, response_payload)
+            return
+
+        if self.routing_table.key < payload.search_key:
+            # Search to the right
+            level = min(payload.level, self.routing_table.height() - 1)
+            while level >= 0:
+                neighbour = self.routing_table.get_best(level, RIGHT, payload.search_key)
+                if neighbour and neighbour.key <= payload.search_key:
+                    response_payload = SearchNextNodesResponsePayload(payload.identifier, neighbour.to_payload(), level)
+                    self.ez_send(peer, response_payload)
+                    return
+                else:
+                    level -= 1
+
+            # We exhausted our search to the right - return ourselves as result to the search originator
+            self.logger.debug("Peer %s (key %d) exhausted search to the right - returning self as search result",
+                              self.get_my_short_id(), self.routing_table.key)
+            response_payload = SearchNextNodesResponsePayload(payload.identifier, self.get_my_node().to_payload(), 0)
+            self.ez_send(peer, response_payload)
+        else:
+            # Search to the left
+            level = min(payload.level, self.routing_table.height() - 1)
+            while level >= 0:
+                neighbour = self.routing_table.get_best(level, LEFT, payload.search_key)
+                if neighbour:
+                    response_payload = SearchNextNodesResponsePayload(payload.identifier, neighbour.to_payload(), level)
+                    self.ez_send(peer, response_payload)
+                    return
+                else:
+                    level -= 1
+
+            # Search to the left exhausted - return the left neighbour if it exists, otherwise return ourselves
+            left_neighbour = self.routing_table.get(0, LEFT)
+            if left_neighbour:
+                self.logger.debug("Peer %s (key %d) exhausted search - returning left neighbour as search result",
+                                  self.get_my_short_id(), self.routing_table.key)
+                response_payload = SearchNextNodesResponsePayload(payload.identifier, left_neighbour.to_payload(), 0)
+                self.ez_send(peer, response_payload)
+            else:
+                # We also don't have a left neighbour - return ourselves as last resort
+                response_payload = SearchNextNodesResponsePayload(payload.identifier, self.get_my_node().to_payload(), 0)
+                self.ez_send(peer, response_payload)
+
+    @lazy_wrapper(SearchNextNodesResponsePayload)
+    def on_search_next_nodes_response(self, peer: Peer, payload: SearchNextNodesResponsePayload):
+        if self.is_offline:
+            return
+
+        self.logger.info("Peer %s received next nodes search response from peer %s (response node key: %d)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
+                         payload.response.key)
+
+        if not self.request_cache.has("search", payload.identifier):
+            self.logger.warning("search cache with id %s not found", payload.identifier)
+            return
+
+        cache = self.request_cache.get("search", payload.identifier)
+
+        node = SGNode.from_payload(payload.response)
+        cache.next_nodes_future.set_result([node])
 
     async def get_link(self, peer: Peer, side: Direction, level: int):
         self.logger.info("Peer %s sending get link message to peer %s (side: %d, level: %d)",
