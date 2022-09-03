@@ -7,7 +7,7 @@ from ipv8.util import fail
 
 from bami.skipgraph import RIGHT, LEFT, Direction
 from bami.skipgraph.cache import SearchCache, NeighbourRequestCache, LinkRequestCache, BuddyCache, DeleteCache, \
-    FindNewNeighbourCache, SetNeighbourNilCache
+    FindNewNeighbourCache, SetNeighbourNilCache, SearchNextNodesRequestCache
 from bami.skipgraph.membership_vector import MembershipVector
 from bami.skipgraph.node import SGNode
 from bami.skipgraph.payload import SearchNextNodesRequestPayload, NodeInfoPayload, \
@@ -153,6 +153,16 @@ class SkipGraphCommunity(Community):
             cache.hops += 1
             current_node = list(cache.nodes)[0]
             next_nodes = await self.get_next_nodes_for_search(cache, current_node)
+            if not next_nodes:
+                # The request failed - inform the nodes that have the failed node in their routing tables
+                cache.nodes.remove(current_node)
+                if not cache.nodes:
+                    # We've run out of paths! Return the current node which should be the closest
+                    result = current_node
+                    break
+                else:
+                    continue
+
             if next_nodes[0] == current_node:
                 # We found the best node
                 result = next_nodes[0]
@@ -170,15 +180,17 @@ class SkipGraphCommunity(Community):
 
         return result
 
-    async def get_next_nodes_for_search(self, cache: SearchCache, current_node: SGNode):
+    async def get_next_nodes_for_search(self, search_cache: SearchCache, current_node: SGNode):
+        cache = SearchNextNodesRequestCache(self, search_cache.number)
+        self.request_cache.add(cache)
+
         peer_pk = current_node.get_peer().public_key.key_to_bin()
         self.logger.debug("Peer %s (key %d) sending request for next nodes to peer %s (key %d) during search for "
                           "key %d", self.get_my_short_id(), self.routing_table.key, self.get_short_id(peer_pk),
-                          current_node.key, cache.search_key)
-        payload = SearchNextNodesRequestPayload(cache.number, cache.search_key, cache.level)
-        cache.next_nodes_future = Future()
+                          current_node.key, search_cache.search_key)
+        payload = SearchNextNodesRequestPayload(cache.number, search_cache.search_key, search_cache.level)
         self.ez_send(current_node.get_peer(), payload)
-        return await cache.next_nodes_future
+        return await cache.future
 
     @lazy_wrapper(SearchNextNodesRequestPayload)
     def on_search_next_nodes_request(self, peer: Peer, payload: SearchNextNodesRequestPayload):
@@ -192,7 +204,7 @@ class SkipGraphCommunity(Community):
 
         if self.routing_table.key == payload.search_key:
             response_payload = SearchNextNodesResponsePayload(
-                payload.identifier, self.get_my_node().to_payload(), payload.level)
+                payload.identifier, [self.get_my_node().to_payload()], payload.level)
             self.ez_send(peer, response_payload)
             return
 
@@ -200,9 +212,10 @@ class SkipGraphCommunity(Community):
             # Search to the right
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                neighbour = self.routing_table.get_best(level, RIGHT, payload.search_key)
-                if neighbour and neighbour.key <= payload.search_key:
-                    response_payload = SearchNextNodesResponsePayload(payload.identifier, neighbour.to_payload(), level)
+                neighbours = [nb for nb in self.routing_table.get_all(level, RIGHT) if nb.key <= payload.search_key]
+                if neighbours:
+                    nbs_payloads = [nb.to_payload() for nb in neighbours]
+                    response_payload = SearchNextNodesResponsePayload(payload.identifier, nbs_payloads, level)
                     self.ez_send(peer, response_payload)
                     return
                 else:
@@ -211,15 +224,16 @@ class SkipGraphCommunity(Community):
             # We exhausted our search to the right - return ourselves as result to the search originator
             self.logger.debug("Peer %s (key %d) exhausted search to the right - returning self as search result",
                               self.get_my_short_id(), self.routing_table.key)
-            response_payload = SearchNextNodesResponsePayload(payload.identifier, self.get_my_node().to_payload(), 0)
+            response_payload = SearchNextNodesResponsePayload(payload.identifier, [self.get_my_node().to_payload()], 0)
             self.ez_send(peer, response_payload)
         else:
             # Search to the left
             level = min(payload.level, self.routing_table.height() - 1)
             while level >= 0:
-                neighbour = self.routing_table.get_best(level, LEFT, payload.search_key)
-                if neighbour:
-                    response_payload = SearchNextNodesResponsePayload(payload.identifier, neighbour.to_payload(), level)
+                neighbours = [nb for nb in self.routing_table.get_all(level, LEFT) if nb.key >= payload.search_key]
+                if neighbours:
+                    nbs_payloads = [nb.to_payload() for nb in neighbours]
+                    response_payload = SearchNextNodesResponsePayload(payload.identifier, nbs_payloads, level)
                     self.ez_send(peer, response_payload)
                     return
                 else:
@@ -230,11 +244,11 @@ class SkipGraphCommunity(Community):
             if left_neighbour:
                 self.logger.debug("Peer %s (key %d) exhausted search - returning left neighbour as search result",
                                   self.get_my_short_id(), self.routing_table.key)
-                response_payload = SearchNextNodesResponsePayload(payload.identifier, left_neighbour.to_payload(), 0)
+                response_payload = SearchNextNodesResponsePayload(payload.identifier, [left_neighbour.to_payload()], 0)
                 self.ez_send(peer, response_payload)
             else:
                 # We also don't have a left neighbour - return ourselves as last resort
-                response_payload = SearchNextNodesResponsePayload(payload.identifier, self.get_my_node().to_payload(), 0)
+                response_payload = SearchNextNodesResponsePayload(payload.identifier, [self.get_my_node().to_payload()], 0)
                 self.ez_send(peer, response_payload)
 
     @lazy_wrapper(SearchNextNodesResponsePayload)
@@ -242,18 +256,18 @@ class SkipGraphCommunity(Community):
         if self.is_offline:
             return
 
-        self.logger.info("Peer %s received next nodes search response from peer %s (response node key: %d)",
-                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
-                         payload.response.key)
+        response_keys = [p.key for p in payload.response]
+        self.logger.info("Peer %s received next nodes search response from peer %s (response keys: %s)",
+                         self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), response_keys)
 
-        if not self.request_cache.has("search", payload.identifier):
-            self.logger.warning("search cache with id %s not found", payload.identifier)
+        if not self.request_cache.has("search-next-nodes", payload.identifier):
+            self.logger.warning("search-next-nodes cache with id %s not found", payload.identifier)
             return
 
-        cache = self.request_cache.get("search", payload.identifier)
+        cache = self.request_cache.pop("search-next-nodes", payload.identifier)
 
-        node = SGNode.from_payload(payload.response)
-        cache.next_nodes_future.set_result([node])
+        nodes = [SGNode.from_payload(p) for p in payload.response]
+        cache.future.set_result(nodes)
 
     async def get_link(self, peer: Peer, side: Direction, level: int):
         self.logger.info("Peer %s sending get link message to peer %s (side: %d, level: %d)",

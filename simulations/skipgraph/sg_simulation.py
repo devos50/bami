@@ -108,6 +108,7 @@ class SkipgraphSimulation(BamiSimulation):
 
         # Verify that this is the right search result
         if res.key not in self.node_keys_sorted:
+            print(res.key)
             assert False, "We got a key result that is not registered in the Skip List!"
 
         search_result_is_correct = True
@@ -235,7 +236,7 @@ class SkipgraphSimulation(BamiSimulation):
                     for msg_id, network_stats in node.endpoint.statistics[node.overlay.get_prefix()].items():
                         tot_up += network_stats.bytes_up
                         tot_down += network_stats.bytes_down
-                    msg_stats_file.write("%d,%d,%d,%d\n" % (self.settings.peers, ind, network_stats.bytes_up, network_stats.bytes_down))
+                    msg_stats_file.write("%d,%d,%d,%d\n" % (self.settings.peers, ind, tot_up, tot_down))
 
         # Search hops statistics
         hops_freq = {}
@@ -254,7 +255,8 @@ class SkipgraphSimulation(BamiSimulation):
                 tot_count += freq
                 search_hops_file.write("%d,%d,%d,%d\n" % (self.settings.peers, self.settings.nb_size, num_hops, freq))
 
-        print("Average search hops: %f" % (tot / tot_count))
+        if tot_count > 0:
+            print("Average search hops: %f" % (tot / tot_count))
 
         # Search latencies
         with open(os.path.join(self.data_dir, "latencies.csv"), "w") as latencies_file:

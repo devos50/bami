@@ -18,6 +18,7 @@ class RoutingTable:
         self.max_level: int = 0
         self.levels: List[RoutingTableSingleLevel] = []
         self.logger = logging.getLogger(__name__)
+        self.my_node: Optional[SGNode] = None
 
         # Initialize all levels
         for level in range(MembershipVector.LENGTH + 1):
@@ -37,27 +38,14 @@ class RoutingTable:
         ind = 0 if side == RIGHT else len(self.levels[level].neighbors[side]) - 1
         return nbs[ind]
 
-    def get_best(self, level: int, side: Direction, search_target: int) -> Optional[SGNode]:
+    def get_all(self, level: int, side: Direction) -> List[SGNode]:
         """
-        Return the best search result.
+        Return all neighbours on a particular level and a side.
         """
-        nbs = self.levels[level].neighbors[side]
-        if not nbs:
-            return None
+        if level >= len(self.levels):
+            return []
 
-        best: Optional[SGNode] = nbs[0]
-        if side == RIGHT:
-            # Find the right neighbour with the largest key smaller than the search target
-            cur_ind: int = 1
-            while cur_ind <= len(nbs) - 1 and nbs[cur_ind].key <= search_target:
-                best = nbs[cur_ind]
-                cur_ind += 1
-        elif side == LEFT:
-            cur_ind: int = len(nbs) - 1
-            while cur_ind >= 0 and nbs[cur_ind].key >= search_target:
-                best = nbs[cur_ind]
-                cur_ind -= 1
-        return best
+        return self.levels[level].neighbors[side]
 
     def set(self, level: int, side: Direction, node: Optional[SGNode]) -> None:
         if node is None:

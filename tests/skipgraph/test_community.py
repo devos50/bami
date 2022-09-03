@@ -351,6 +351,13 @@ class TestSkipGraphCommunityLargeJoin(TestSkipGraphCommunityBase):
         for node in self.nodes[1:]:
             await node.overlay.join(introducer_peer=self.nodes[0].my_peer)
 
+        # Give node 21 two right neighbours on lvl 2 (the nodes with key 33 and 36)
+        nb = self.get_node_with_key(33).overlay.get_my_node()
+        self.get_node_with_key(21).overlay.routing_table.levels[2].neighbors[RIGHT].append(nb)
+        nb = self.get_node_with_key(36).overlay.get_my_node()
+        self.get_node_with_key(21).overlay.routing_table.levels[2].neighbors[RIGHT].append(nb)
+
+        print(self.get_node_with_key(21).overlay.routing_table)
+
         result = await self.get_node_with_key(21).overlay.search(40)
         assert result.key == 36
-        assert 2 in self.get_node_with_key(21).overlay.search_hops

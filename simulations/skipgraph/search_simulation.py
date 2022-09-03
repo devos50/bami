@@ -28,7 +28,6 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
                 node.overlay.is_offline = True
                 self.online_nodes.remove(node)
                 self.offline_nodes.append(node)
-                self.node_keys_sorted.remove(node.overlay.routing_table.key)
 
         # for node in random.sample(self.nodes[1:], 40):
         #     node.overlay.is_offline = True
@@ -58,19 +57,23 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
             if any(results):
                 successful_searches += 1
 
-        print("Searches with incorrect result: %d" % (self.settings.num_searches - successful_searches))
+        print("Total searches: %d, incorrect result: %d" %
+              (self.settings.num_searches, self.settings.num_searches - successful_searches))
+
+        for i in range(len(self.nodes)):
+            print(self.nodes[i].overlay.routing_table)
 
 
 if __name__ == "__main__":
     settings = SkipGraphSimulationSettings()
-    settings.peers = 10
+    settings.peers = 100
     settings.duration = 3600
     settings.logging_level = "DEBUG"
     settings.profile = False
-    settings.offline_fraction = 10
-    settings.nb_size = 4
+    settings.offline_fraction = 2
+    settings.nb_size = 3
     settings.enable_community_statistics = True
-    settings.num_searches = 1000
+    settings.num_searches = 100
     settings.enable_ipv8_ticker = False
     settings.latencies_file = "data/latencies.txt"
     settings.assign_sequential_sg_keys = True

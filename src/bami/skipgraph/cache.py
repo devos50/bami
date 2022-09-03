@@ -40,6 +40,29 @@ class SearchCache(RandomNumberCache):
         self.start_time = get_event_loop().time()
         self.nodes: Set[SGNode] = set()
 
+    @property
+    def timeout_delay(self):
+        return 3600.0
+
+
+class SearchNextNodesRequestCache(RandomNumberCache):
+    """
+    This cache keeps track of a request to fetch subsequent nodes during a search.
+    """
+    TIMEOUT = 2.0
+
+    def __init__(self, community, search_identifier: int):
+        super().__init__(community.request_cache, "search-next-nodes")
+        self.search_identifier: int = search_identifier  # The identifier of the overarching search
+        self.future: Future = Future()
+
+    @property
+    def timeout_delay(self) -> float:
+        return SearchNextNodesRequestCache.TIMEOUT
+
+    def on_timeout(self):
+        self.future.set_result(None)
+
 
 class DeleteCache(RandomNumberCache):
 

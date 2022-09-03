@@ -1,25 +1,29 @@
 from ipv8.messaging.lazy_payload import vp_compile, VariablePayload
+from ipv8.messaging.payload_dataclass import type_from_format, dataclass
+
+ip_address = type_from_format('ip_address')
 
 
-@vp_compile
-class NodeInfoPayload(VariablePayload):
-    msg_id = 1
-    names = ['address', 'public_key', 'key', 'mv']
-    format_list = ['ip_address', 'varlenH', 'I', 'varlenH']
+@dataclass
+class NodeInfoPayload:
+    address: ip_address
+    public_key: bytes
+    key: int
+    mv: bytes
 
 
-@vp_compile
-class SearchNextNodesRequestPayload(VariablePayload):
-    msg_id = 2
-    names = ['identifier', 'search_key', 'level']
-    format_list = ['I', 'I', 'I']
+@dataclass(msg_id=1)
+class SearchNextNodesRequestPayload:
+    identifier: int
+    search_key: int
+    level: int
 
 
-@vp_compile
-class SearchNextNodesResponsePayload(VariablePayload):
-    msg_id = 3
-    names = ['identifier', 'response', 'level']
-    format_list = ['I', NodeInfoPayload, 'I']
+@dataclass(msg_id=2)
+class SearchNextNodesResponsePayload:
+    identifier: int
+    response: [NodeInfoPayload]
+    level: int
 
 
 @vp_compile
