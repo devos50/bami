@@ -55,6 +55,7 @@ class DKGCommunity(Community):
 
         self.replication_factor: int = 2
         self.is_malicious: bool = False
+        self.is_offline: bool = False
         self.should_verify_key: bool = True
 
         self.logger.info("The DKG community started!")
@@ -170,6 +171,9 @@ class DKGCommunity(Community):
 
     @lazy_wrapper(TripletsRequestPayload)
     def on_triplets_request(self, peer: Peer, payload: TripletsRequestPayload):
+        if self.is_offline:
+            return
+
         triplets: List[Triplet] = []
         if not self.is_malicious:
             triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
@@ -263,6 +267,9 @@ class DKGCommunity(Community):
 
     @lazy_wrapper(StorageRequestPayload)
     def on_storage_request(self, peer: Peer, payload: StorageRequestPayload):
+        if self.is_offline:
+            return
+
         self.logger.info("Peer %s received storage request from peer %s for key %d",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), payload.key)
         response = self.should_store(payload.content_identifier, payload.key)
@@ -270,6 +277,9 @@ class DKGCommunity(Community):
 
     @lazy_wrapper(StorageResponsePayload)
     def on_storage_response(self, peer: Peer, payload: StorageResponsePayload):
+        if self.is_offline:
+            return
+
         self.logger.info("Peer %s received storage response from peer %s (response: %s)",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()), bool(payload.response))
 
@@ -289,6 +299,9 @@ class DKGCommunity(Community):
 
     @lazy_wrapper(IsStoringQueryPayload)
     def on_is_storing_query(self, peer: Peer, payload: IsStoringQueryPayload):
+        if self.is_offline:
+            return
+
         self.logger.info("Peer %s received storing query from peer %s for content %s",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
                          hexlify(payload.content).decode())
@@ -297,6 +310,9 @@ class DKGCommunity(Community):
 
     @lazy_wrapper(IsStoringResponsePayload)
     def on_is_storing_response(self, peer: Peer, payload: IsStoringResponsePayload):
+        if self.is_offline:
+            return
+
         self.logger.info("Peer %s received is storing response from peer %s (response: %s)",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
                          bool(payload.storing))
@@ -314,6 +330,9 @@ class DKGCommunity(Community):
         A peer has informed us that a search for some content has failed for a particular index.
         Check this and repair the damage if possible.
         """
+        if self.is_offline:
+            return
+
         if payload.content not in self.knowledge_graph.stored_content:
             self.logger.warning("Peer %s informed us of a failed search for content %s but we're not storing it!",
                                 self.get_short_id(peer.public_key.key_to_bin()), hexlify(payload.content).decode())
