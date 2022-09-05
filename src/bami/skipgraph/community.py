@@ -401,6 +401,10 @@ class SkipGraphCommunity(Community):
         """
         Join the Skip Graph.
         """
+        if not self.routing_table:
+            self.logger.warning("Routing table not initialized - unable to join the Skip Graph!")
+            return
+
         start_time = get_event_loop().time()
         self.logger.info("Peer %s joining the Skip Graph (key: %d, mv: %s)",
                          self.get_my_short_id(), self.routing_table.key, self.routing_table.mv)

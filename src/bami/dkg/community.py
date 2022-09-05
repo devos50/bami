@@ -9,7 +9,6 @@ from bami.dkg.cache import StorageRequestCache, TripletsRequestCache, IsStoringQ
 from bami.dkg.content import Content
 from bami.eva.protocol import EVAProtocol
 from bami.skipgraph import LEFT, RIGHT
-from bami.skipgraph.community import SkipGraphCommunity
 
 from bami.dkg.payloads import StorageRequestPayload, StorageResponsePayload, TripletsRequestPayload, \
     SearchFailurePayload, IsStoringQueryPayload, IsStoringResponsePayload, TripletsPayload
@@ -18,12 +17,16 @@ from bami.dkg.db.knowledge_graph import KnowledgeGraph
 from bami.dkg.db.rules_database import RulesDatabase
 from bami.dkg.db.triplet import Triplet
 from bami.dkg.rule_execution_engine import RuleExecutionEngine
+from bami.skipgraph.community import SkipGraphCommunity
 from bami.skipgraph.node import SGNode
+
+from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
+from ipv8.requestcache import RequestCache
 from ipv8.types import Peer
 
 
-class DKGCommunity(SkipGraphCommunity):
+class DKGCommunity(Community):
     community_id = unhexlify('d5889074c1e5b60423cdb6e9307ba0ca5695ead7')
 
     def __init__(self, *args, **kwargs):
@@ -34,6 +37,9 @@ class DKGCommunity(SkipGraphCommunity):
         self.rule_execution_engine: RuleExecutionEngine = RuleExecutionEngine(self.content_db, self.rules_db,
                                                                               self.my_peer.key,
                                                                               self.on_new_triplets_generated)
+        self.skip_graphs: List[SkipGraphCommunity] = []
+
+        self.request_cache = RequestCache()
 
         self.edge_search_latencies: List[Tuple[float, float]] = []  # Keep track of the latency of individual edge searches
 
@@ -48,9 +54,19 @@ class DKGCommunity(SkipGraphCommunity):
         self.add_message_handler(IsStoringResponsePayload, self.on_is_storing_response)
 
         self.replication_factor: int = 2
+        self.is_malicious: bool = False
         self.should_verify_key: bool = True
 
         self.logger.info("The DKG community started!")
+
+    def get_sg_key(self) -> int:
+        return self.skip_graphs[0].routing_table.key
+
+    def get_my_short_id(self) -> str:
+        return hexlify(self.my_peer.public_key.key_to_bin()).decode()[-8:]
+
+    def get_short_id(self, peer_pk: bytes) -> str:
+        return hexlify(peer_pk).decode()[-8:]
 
     async def on_eva_receive(self, result):
         self.logger.info(f'EVA Data has been received: {result}')
@@ -77,15 +93,22 @@ class DKGCommunity(SkipGraphCommunity):
 
     async def search_edges_with_key(self, key: int, content_hash: bytes):
         sg_search_start_time = get_event_loop().time()
-        target_node = await self.search(key)
+
+        target_nodes: List[SGNode] = []
+        for skip_graph in self.skip_graphs:
+            target_node: Optional[SGNode] = await skip_graph.search(key)
+            if target_node:
+                target_nodes.append(target_node)
+
         sg_search_time = get_event_loop().time() - sg_search_start_time
-        if not target_node:
+        if not target_nodes:
             self.logger.warning("Search node with key %d failed and returned nothing.", key)
             self.edge_search_latencies.append((sg_search_time, 0))
             return key, None, []
 
         # Query the target node directly for the edges.
-        if target_node.key == self.routing_table.key:
+        target_node = target_nodes[0]  # TODO just pick the first node for now
+        if target_node.key == self.get_sg_key():
             triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
             self.edge_search_latencies.append((sg_search_time, 0))
             return key, target_node, triplets
@@ -157,16 +180,28 @@ class DKGCommunity(SkipGraphCommunity):
             self.logger.info("Content generated no triplets - won't send out storage requests")
             return
 
+        if not self.skip_graphs:
+            self.logger.warning("No skip graphs found - won't send out storage requests")
+            return
+
         content_keys: List[int] = Content.get_keys(content.identifier, num_keys=self.replication_factor)
         # TODO this should be done in parallel
         for ind in range(self.replication_factor):
-            target_node: Optional[SGNode] = await self.search(content_keys[ind])
-            if not target_node:
+
+            # TODO this should also be done in parallel
+            target_nodes: List[SGNode] = []
+            for skip_graph in self.skip_graphs:
+                target_node: Optional[SGNode] = await skip_graph.search(content_keys[ind])
+                if target_node:
+                    target_nodes.append(target_node)
+
+            if not target_nodes:
                 self.logger.warning("Search node with key %d failed and returned nothing - bailing out.",
                                     content_keys[ind])
                 return
 
-            if target_node.key == self.routing_table.key:
+            target_node = target_nodes[0]  # TODO we just take the first node for now
+            if target_node.key == self.get_sg_key():
                 # I'm responsible for storing this data
                 for triplet in triplets:
                     self.knowledge_graph.add_triplet(triplet)
@@ -195,6 +230,10 @@ class DKGCommunity(SkipGraphCommunity):
         """
         Determine whether we should store this data element by checking the proximity in the Skip Graph.
         """
+        if not self.skip_graphs:
+            self.logger.warning("No Skip Graphs initialized, unable to determine "
+                                "if we should store content with ID %d!", content_key)
+            return False
 
         # Check that the content key is derived from the content identifier
         if self.should_verify_key and not Content.verify_key(content_identifier, content_key, self.replication_factor):
@@ -203,11 +242,11 @@ class DKGCommunity(SkipGraphCommunity):
             return False
 
         # Verify whether we are responsible for this key
-        ln: SGNode = self.routing_table.get(0, LEFT)
+        ln: SGNode = self.skip_graphs[0].routing_table.get(0, LEFT)
         if ln and content_key <= ln.key:
             return False  # A neighbour to the left should actually store this
 
-        rn: SGNode = self.routing_table.get(0, RIGHT)
+        rn: SGNode = self.skip_graphs[0].routing_table.get(0, RIGHT)
         if rn and content_key >= rn.key:
             return False  # A neighbour to the right should actually store this
 
@@ -299,5 +338,9 @@ class DKGCommunity(SkipGraphCommunity):
         self.rule_execution_engine.start()
 
     async def unload(self):
-        await super().unload()
+        for skip_graph in self.skip_graphs:
+            await skip_graph.unload()
+
+        await self.request_cache.shutdown()
         self.rule_execution_engine.shutdown()
+        await super().unload()
