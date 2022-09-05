@@ -80,11 +80,13 @@ class BamiSimulation(TaskManager):
                 instance.state_machine_task.cancel()
 
             # Set the WAN address of the peer to the address of the endpoint
-            instance.overlays[0].max_peers = -1
-            instance.overlays[0].my_peer.address = instance.overlays[0].endpoint.wan_address
-            instance.overlays[0].my_estimated_wan = instance.overlays[0].endpoint.wan_address
+            for overlay in instance.overlays:
+                overlay.max_peers = -1
+                overlay.my_peer.address = instance.overlays[0].endpoint.wan_address
+                overlay.my_estimated_wan = instance.overlays[0].endpoint.wan_address
 
             # If we have a main overlay set, find it and assign it to the overlay attribute
+            instance.overlay = None
             if self.MAIN_OVERLAY:
                 for overlay in instance.overlays:
                     if overlay.__class__.__name__ == self.MAIN_OVERLAY:
@@ -92,8 +94,9 @@ class BamiSimulation(TaskManager):
                         break
 
             if self.settings.enable_community_statistics:
-                instance.overlay.endpoint = instance.endpoint
-                instance.endpoint.enable_community_statistics(instance.overlay.get_prefix(), True)
+                for overlay in instance.overlays:
+                    overlay.endpoint = instance.endpoint
+                    instance.endpoint.enable_community_statistics(overlay.get_prefix(), True)
 
             self.nodes.append(instance)
 

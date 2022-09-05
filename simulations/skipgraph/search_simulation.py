@@ -15,10 +15,11 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
 
         # Reset all statistics (since introduction will also conduct a search)
         for node in self.nodes:
-            node.overlay.search_hops = {}
-            node.overlay.search_latencies = []
-            node.endpoint.enable_community_statistics(node.overlay.get_prefix(), False)
-            node.endpoint.enable_community_statistics(node.overlay.get_prefix(), True)
+            for skip_graph in self.get_skip_graphs(node):
+                skip_graph.search_hops = {}
+                skip_graph.search_latencies = []
+                node.endpoint.enable_community_statistics(skip_graph.get_prefix(), False)
+                node.endpoint.enable_community_statistics(skip_graph.get_prefix(), True)
 
         # for node in random.sample(self.nodes[1:], 40):
         #     node.overlay.is_offline = True
@@ -66,7 +67,8 @@ if __name__ == "__main__":
     settings.duration = 3600
     settings.logging_level = "ERROR"
     settings.profile = False
-    settings.nb_size = 4
+    settings.nb_size = 3
+    settings.skip_graphs = 1
     settings.enable_community_statistics = True
     settings.num_searches = 1000
     settings.enable_ipv8_ticker = False
@@ -74,7 +76,6 @@ if __name__ == "__main__":
     settings.track_failing_nodes_in_rts = False
     settings.assign_sequential_sg_keys = True
     simulation = SearchSkipgraphSimulation(settings)
-    simulation.MAIN_OVERLAY = "SkipGraphCommunity"
 
     ensure_future(simulation.run())
 

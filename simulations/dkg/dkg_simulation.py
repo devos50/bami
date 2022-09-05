@@ -26,6 +26,11 @@ class DKGSimulation(SkipgraphSimulation):
         builder = ConfigBuilder().clear_keys().clear_overlays()
         builder.add_key("my peer", "curve25519", None)
         builder.add_overlay("DKGCommunity", "my peer", [], [], {}, [])
+
+        for sg_ind in range(self.settings.skip_graphs):
+            cid: bytes = (b"%d" % sg_ind) * 20
+            builder.add_overlay("SkipGraphCommunity", "my peer", [], [], {"community_id": cid}, [], allow_duplicate=True)
+
         return builder
 
     def on_triplets_generated(self, content: Content, triplets: List[Triplet]):
@@ -113,17 +118,19 @@ class DKGSimulation(SkipgraphSimulation):
 
         print("Total ETH transactions: %d" % total_tx)
 
+    async def start_ipv8_nodes(self) -> None:
+        await super().start_ipv8_nodes()
+
+        # Make sure the DKGCommunity knows about the Skip Graph instances
+        for node in self.nodes:
+            node.overlay.skip_graphs = self.get_skip_graphs(node)
+
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
 
         # Set the replication factor
         for node in self.nodes:
             node.overlay.replication_factor = self.settings.replication_factor
-
-        # Reset all search hops statistics (since introduction will also conduct a search)
-        for node in self.nodes:
-            node.overlay.search_hops = {}
-            node.overlay.search_latencies = []
 
         if self.settings.dataset == Dataset.TRIBLER:
             await self.setup_tribler_experiment()
@@ -138,6 +145,8 @@ class DKGSimulation(SkipgraphSimulation):
             print("Bringing %d nodes offline..." % num_offline)
             for node in random.sample(self.nodes, num_offline):
                 node.overlay.is_offline = True
+                for skip_graph in self.get_skip_graphs(node):
+                    skip_graph.is_offline = True
                 self.online_nodes.remove(node)
                 self.offline_nodes.append(node)
 
@@ -148,6 +157,8 @@ class DKGSimulation(SkipgraphSimulation):
             print("Making %d nodes malicious..." % num_malicious)
             for node in random.sample(self.online_nodes, num_malicious):
                 node.overlay.is_malicious = True
+                for skip_graph in self.get_skip_graphs(node):
+                    skip_graph.is_malicious = True
                 malicious_nodes.add(node)
 
         # Determine content that has generated edges - we do not want to search for content that has no triplets
@@ -159,8 +170,7 @@ class DKGSimulation(SkipgraphSimulation):
 
         print("Starting edge searches")
 
-        async def do_search(delay, node, content_hash):
-            await sleep(delay)
+        async def do_search(node, content_hash):
             edges = await node.overlay.search_edges(content_hash)
             if not edges:
                 self.failed_searches += 1
@@ -179,9 +189,7 @@ class DKGSimulation(SkipgraphSimulation):
         for _ in range(self.settings.num_searches):
             content_hash = random.choice(list_content_with_triplets)
             random_node = random.choice(eligible_nodes)
-            ensure_future(do_search(random.random() * 20, random_node, content_hash))
-
-        await sleep(60)
+            await do_search(random_node, content_hash)
 
         print("Total searches: %d, failed searches: %d" % (self.searches_done, self.failed_searches))
 
@@ -204,7 +212,7 @@ class DKGSimulation(SkipgraphSimulation):
                 out_file.write("%d,%d,%d,%d,%d,%d,%d,%d,%d\n" %
                                (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
                                 self.settings.malicious_fraction, self.settings.replication_factor, ind,
-                                node.overlay.routing_table.key, num_edges, storage_costs))
+                                node.overlay.get_sg_key(), num_edges, storage_costs))
 
         # Write away the edge search latencies
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:

@@ -3,7 +3,7 @@ import json
 import random
 from asyncio import get_event_loop, ensure_future
 from binascii import unhexlify, hexlify
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 from bami.dkg.cache import StorageRequestCache, TripletsRequestCache, IsStoringQueryCache
 from bami.dkg.content import Content
@@ -95,10 +95,12 @@ class DKGCommunity(Community):
         sg_search_start_time = get_event_loop().time()
 
         target_nodes: List[SGNode] = []
+        target_nodes_keys: Set[int] = set()
         for skip_graph in self.skip_graphs:
             target_node: Optional[SGNode] = await skip_graph.search(key)
-            if target_node:
+            if target_node and target_node.key not in target_nodes_keys:
                 target_nodes.append(target_node)
+                target_nodes_keys.add(target_node.key)
 
         sg_search_time = get_event_loop().time() - sg_search_start_time
         if not target_nodes:
@@ -106,21 +108,26 @@ class DKGCommunity(Community):
             self.edge_search_latencies.append((sg_search_time, 0))
             return key, None, []
 
-        # Query the target node directly for the edges.
-        target_node = target_nodes[0]  # TODO just pick the first node for now
-        if target_node.key == self.get_sg_key():
-            triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
-            self.edge_search_latencies.append((sg_search_time, 0))
-            return key, target_node, triplets
-        else:
-            # We send an outgoing query
-            eva_start_time = get_event_loop().time()
-            cache = TripletsRequestCache(self)
-            self.request_cache.add(cache)
-            self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
-            triplets = await cache.future
-            self.edge_search_latencies.append((sg_search_time, get_event_loop().time() - eva_start_time))
-            return key, target_node, triplets
+        # Query the target nodes directly for the edges.
+        # TODO we can do this in parallel
+        # TODO we should start with the 'best' node first
+        for target_node in target_nodes:
+            if target_node.key == self.get_sg_key():
+                triplets = self.knowledge_graph.get_triplets_of_node(content_hash)
+                self.edge_search_latencies.append((sg_search_time, 0))
+                return key, target_node, triplets
+            else:
+                # We send an outgoing query
+                eva_start_time = get_event_loop().time()
+                cache = TripletsRequestCache(self)
+                self.request_cache.add(cache)
+                self.ez_send(target_node.get_peer(), TripletsRequestPayload(cache.number, content_hash))
+                triplets = await cache.future
+                if triplets:
+                    self.edge_search_latencies.append((sg_search_time, get_event_loop().time() - eva_start_time))
+                    return key, target_node, triplets
+
+        return key, None, []
 
     async def search_edges(self, content_hash: bytes) -> List[Triplet]:
         """
