@@ -21,8 +21,9 @@ class TestDKGCommunityBase(TestBase):
     def initialize_skip_graphs(self):
         for node in self.nodes:
             for i in range(self.NUM_SKIP_GRAPHS):
+                cid: bytes = (b"%d" % i) * 20
                 sg: SkipGraphCommunity = SkipGraphCommunity(node.overlay.my_peer, node.overlay.endpoint,
-                                                            node.overlay.network)
+                                                            node.overlay.network, community_id=cid)
                 sg.my_estimated_wan = node.overlay.endpoint.wan_address
                 sg.my_estimated_lan = node.overlay.endpoint.lan_address
                 node.overlay.skip_graphs.append(sg)
@@ -164,3 +165,8 @@ class TestDKGCommunityDoubleReplication(TestDKGCommunityBase):
         triplets = await self.nodes[0].overlay.search_edges(b"abcdefg")
         assert len(triplets) == 1
         Content.custom_keys = None
+
+
+class TestDKGCommunityDoubleReplicationDoubleSkipGraph(TestDKGCommunityDoubleReplication):
+    NUM_NODES = 4
+    NUM_SKIP_GRAPHS = 2

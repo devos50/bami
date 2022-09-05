@@ -29,10 +29,12 @@ class SkipGraphCommunity(Community):
         """
         Initialize the Skip Graph community.
         """
+        if "community_id" in kwargs:
+            self.community_id = kwargs.pop("community_id")
+
         super(SkipGraphCommunity, self).__init__(*args, **kwargs)
         self.peers_info: Dict[Peer, SGNode] = {}
         self.routing_table: Optional[RoutingTable] = None
-        self.is_offline: bool = False
 
         self.request_cache = RequestCache()
 
@@ -62,6 +64,7 @@ class SkipGraphCommunity(Community):
         self.leave_latencies: List[float] = []   # Keep track of the latency of leave operations
 
         self.is_leaving: bool = False  # Whether we are leaving the Skip Graph
+        self.is_offline: bool = False
         self.is_malicious: bool = False  # Whether we are a malicious peer
 
         self.logger.info("Skip Graph community initialized. Short ID: %s", self.get_my_short_id())
