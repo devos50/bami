@@ -85,9 +85,21 @@ class SkipGraphCommunity(Community):
         return SGNode(self.my_estimated_wan, my_pk, self.routing_table.key, self.routing_table.mv)
 
     def forward_search(self, received_payload: SearchPayload, from_peer: Peer, to_node: SGNode, search_id: int,
-                       forward_id: int, originator: SGNode, search_key: int, level: int, hops: int):
+                       forward_id: int, originator: NodeInfoPayload, search_key: int, level: int, hops: int):
         if self.is_malicious:
-            return  # Malicious peers pretend like they forwarded the search request but in reality the didn't.
+            # We are a malicious peer. End the search by responding with ourselves as search result to the originator
+            # of the search.
+            self.logger.warning("Peer %s malicious - ending search with ID %d",
+                                self.get_my_short_id(), received_payload.identifier)
+            response_payload = SearchResponsePayload(received_payload.identifier, self.get_my_node().to_payload(), hops)
+            originator_node = SGNode.from_payload(originator)
+            self.ez_send(originator_node.get_peer(), response_payload)
+
+            # And respond to the node that we received the search request from.
+            response_payload = SearchIntermediateResponsePayload(forward_id, to_node.to_payload())
+            self.ez_send(from_peer, response_payload)
+
+            return
 
         self.logger.debug("Peer %s (key %d) forwarding search request for key %d to peer %s (key %d)",
                           self.get_my_short_id(), self.routing_table.key, search_key,

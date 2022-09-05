@@ -5,10 +5,11 @@ from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [100]
+PEERS = [1600]
 OFFLINE_FRACTIONS = [0]
-SKIP_GRAPHS = [2]
-REPLICATION_FACTORS = [2]
+MALICIOUS_FRACTIONS = [25]
+SKIP_GRAPHS = [4]
+REPLICATION_FACTORS = [5]
 NB_SIZES = [3]
 EXPERIMENT_REPLICATION = 1
 EXP_NAME = "search"
@@ -27,33 +28,35 @@ if __name__ == "__main__":
     for num_peers in PEERS:
         for skip_graphs in SKIP_GRAPHS:
             for offline_fraction in OFFLINE_FRACTIONS:
-                for replication_factor in REPLICATION_FACTORS:
-                    for nb_size in NB_SIZES:
-                        processes = []
-                        for exp_num in range(EXPERIMENT_REPLICATION):
-                            print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
-                            settings = DKGSimulationSettings()
-                            settings.peers = num_peers
-                            settings.name = EXP_NAME
-                            settings.offline_fraction = offline_fraction
-                            settings.replication_factor = replication_factor
-                            settings.duration = 3600
-                            settings.nb_size = nb_size
-                            settings.fast_data_injection = True
-                            settings.dataset = Dataset.ETHEREUM
-                            settings.num_searches = 1000
-                            settings.max_eth_blocks = 100
-                            settings.skip_graphs = skip_graphs
-                            settings.data_file_name = "blocks.json"
-                            settings.identifier = "%d_%d_%d_%d_%d" % (offline_fraction, skip_graphs, replication_factor, exp_num, nb_size)
-                            settings.logging_level = "ERROR"
-                            settings.enable_community_statistics = True
-                            settings.enable_ipv8_ticker = False
-                            settings.latencies_file = "data/latencies.txt"
+                for malicious_fraction in MALICIOUS_FRACTIONS:
+                    for replication_factor in REPLICATION_FACTORS:
+                        for nb_size in NB_SIZES:
+                            processes = []
+                            for exp_num in range(EXPERIMENT_REPLICATION):
+                                print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
+                                settings = DKGSimulationSettings()
+                                settings.peers = num_peers
+                                settings.name = EXP_NAME
+                                settings.offline_fraction = offline_fraction
+                                settings.malicious_fraction = malicious_fraction
+                                settings.replication_factor = replication_factor
+                                settings.duration = 3600
+                                settings.nb_size = nb_size
+                                settings.fast_data_injection = True
+                                settings.dataset = Dataset.ETHEREUM
+                                settings.num_searches = 1000
+                                settings.max_eth_blocks = 1
+                                settings.skip_graphs = skip_graphs
+                                settings.data_file_name = "blocks.json"
+                                settings.identifier = "%d_%d_%d_%d_%d_%d" % (offline_fraction, malicious_fraction, skip_graphs, replication_factor, exp_num, nb_size)
+                                settings.logging_level = "ERROR"
+                                settings.enable_community_statistics = True
+                                settings.enable_ipv8_ticker = False
+                                settings.latencies_file = "data/latencies.txt"
 
-                            p = Process(target=run, args=(settings,))
-                            p.start()
-                            processes.append(p)
+                                p = Process(target=run, args=(settings,))
+                                p.start()
+                                processes.append(p)
 
-                        for p in processes:
-                            p.join()
+                            for p in processes:
+                                p.join()

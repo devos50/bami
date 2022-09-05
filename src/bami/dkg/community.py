@@ -173,6 +173,8 @@ class DKGCommunity(Community):
         triplets: List[Triplet] = []
         if not self.is_malicious:
             triplets = self.knowledge_graph.get_triplets_of_node(payload.content)
+        else:
+            self.logger.warning("Peer %s malicious - responding with no triplets", self.get_my_short_id())
 
         triplets_payload = TripletsPayload([triplet.to_payload() for triplet in triplets])
         serialized_payload = self.serializer.pack_serializable(triplets_payload)
