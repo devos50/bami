@@ -9,10 +9,10 @@ PEERS = [1600]
 OFFLINE_FRACTIONS = [0]
 MALICIOUS_FRACTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 SKIP_GRAPHS = [5]
-REPLICATION_FACTORS = [1, 2, 3, 4, 5]
-NB_SIZES = [5]
+REPLICATION_FACTORS = [5]
+NB_SIZES = [1, 2, 3, 4, 5]
 EXPERIMENT_REPLICATION = 1
-EXP_NAME = "malicious_replication"
+EXP_NAME = "malicious_nbs"
 
 
 def run(settings):

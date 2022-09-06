@@ -5,14 +5,14 @@ from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [1600]
+PEERS = [800, 1600, 3200, 6400, 12800]
 OFFLINE_FRACTIONS = [0]
 MALICIOUS_FRACTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 SKIP_GRAPHS = [5]
-REPLICATION_FACTORS = [1, 2, 3, 4, 5]
+REPLICATION_FACTORS = [5]
 NB_SIZES = [5]
 EXPERIMENT_REPLICATION = 1
-EXP_NAME = "malicious_replication"
+EXP_NAME = "malicious_peers"
 
 
 def run(settings):
