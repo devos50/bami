@@ -8,9 +8,9 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 PEERS = [1600]
 OFFLINE_FRACTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 MALICIOUS_FRACTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-SKIP_GRAPHS = [4]
-REPLICATION_FACTORS = [4]
-NB_SIZES = [4]
+SKIP_GRAPHS = [5]
+REPLICATION_FACTORS = [5]
+NB_SIZES = [5]
 EXPERIMENT_REPLICATION = 1
 EXP_NAME = "offline_and_malicious"
 
