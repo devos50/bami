@@ -163,7 +163,7 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Determine content that has generated edges - we do not want to search for content that has no triplets
         content_with_triplets = set()
-        for node in self.online_nodes:
+        for node in self.nodes:
             content_with_triplets = content_with_triplets.union(node.overlay.knowledge_graph.stored_content)
 
         print("%d content items with triplets" % len(content_with_triplets))
