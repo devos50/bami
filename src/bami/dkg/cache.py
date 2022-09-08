@@ -1,7 +1,5 @@
 from asyncio import Future
-from typing import List
 
-from bami.dkg.db.triplet import Triplet
 from ipv8.requestcache import RandomNumberCache
 
 
@@ -19,9 +17,15 @@ class IsStoringQueryCache(RandomNumberCache):
         self.future = Future()
 
 
-# TODO no timeouts in this cache yet!
 class TripletsRequestCache(RandomNumberCache):
 
     def __init__(self, community):
         super().__init__(community.request_cache, "triplets")
         self.future = Future()
+
+    @property
+    def timeout_delay(self):
+        return 5.0
+
+    def on_timeout(self):
+        self.future.set_result(None)
