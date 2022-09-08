@@ -27,11 +27,11 @@ if __name__ == "__main__":
 
     for num_peers in PEERS:
         for skip_graphs in SKIP_GRAPHS:
-            processes = []
-            for offline_fraction in OFFLINE_FRACTIONS:
-                for malicious_fraction in MALICIOUS_FRACTIONS:
-                    for replication_factor in REPLICATION_FACTORS:
-                        for nb_size in NB_SIZES:
+            for nb_size in NB_SIZES:
+                processes = []
+                for offline_fraction in OFFLINE_FRACTIONS:
+                    for malicious_fraction in MALICIOUS_FRACTIONS:
+                        for replication_factor in REPLICATION_FACTORS:
                             for exp_num in range(EXPERIMENT_REPLICATION):
                                 print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
                                 settings = DKGSimulationSettings()
@@ -58,5 +58,5 @@ if __name__ == "__main__":
                                 p.start()
                                 processes.append(p)
 
-            for p in processes:
-                p.join()
+                for p in processes:
+                    p.join()
