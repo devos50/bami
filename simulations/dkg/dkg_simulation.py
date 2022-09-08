@@ -216,10 +216,18 @@ class DKGSimulation(SkipgraphSimulation):
                                 num_edges, storage_costs))
 
         # Write away the edge search latencies
+        num_edge_searches: int = 0
+        tot_sg_search_latency: float = 0
+        tot_triplets_requests_latency: float = 0
+        tot_search_latency: float = 0
         with open(os.path.join(self.data_dir, "edge_search_latencies.csv"), "w") as latencies_file:
             latencies_file.write("peers,nb_size,offline_fraction,malicious_fraction,skip_graphs,replication_factor,part,time\n")
             for node in self.nodes:
                 for latency in node.overlay.edge_search_latencies:
+                    num_edge_searches += 1
+                    tot_sg_search_latency += latency[0]
+                    tot_triplets_requests_latency += latency[1]
+                    tot_search_latency += latency[0] + latency[1]
                     latencies_file.write("%d,%d,%d,%d,%d,%d,sg,%f\n" %
                                          (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
                                           self.settings.malicious_fraction, self.settings.skip_graphs,
@@ -231,7 +239,12 @@ class DKGSimulation(SkipgraphSimulation):
                     latencies_file.write("%d,%d,%d,%d,%d,%d,total,%f\n" %
                                          (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
                                           self.settings.malicious_fraction, self.settings.skip_graphs,
-                                          self.settings.replication_factor, latency[0] + latency[1]))
+                                          self.settings.replication_factor, tot_search_latency))
+
+        print("Average SG search latency: %f, triplets request latency: %f, E2E latency: %f" % (
+                tot_sg_search_latency / num_edge_searches,
+                tot_triplets_requests_latency / num_edge_searches,
+                tot_search_latency / num_edge_searches))
 
         # Write aggregated statistics away
         aggregated_file_path = os.path.join("data", "edge_searches_exp_%s.csv" % self.settings.name)

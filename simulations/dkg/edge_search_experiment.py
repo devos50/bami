@@ -7,7 +7,7 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
 PEERS = [100]
 OFFLINE_FRACTIONS = [0]
-MALICIOUS_FRACTIONS = [5]
+MALICIOUS_FRACTIONS = [0]
 SKIP_GRAPHS = [1]
 REPLICATION_FACTORS = [1]
 NB_SIZES = [1]

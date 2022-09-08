@@ -262,7 +262,7 @@ class SkipgraphSimulation(BamiSimulation):
 
         print("Average search hops: %f" % (tot / tot_count))
 
-        # Search latencies
+        # Skip graph search latencies
         with open(os.path.join(self.data_dir, "latencies.csv"), "w") as latencies_file:
             latencies_file.write("peers,nb_size,operation,time\n")
             for node in self.nodes:

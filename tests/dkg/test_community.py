@@ -83,12 +83,12 @@ class TestDKGCommunitySingleReplication(TestDKGCommunityBase):
         Test generating, storing and retrieving a graph node in the network.
         """
         await self.setup_skip_graphs()
-        triplet = Triplet(b"abcdefg", b"b", b"c")
 
         # Test the situation where no edges are returned
         triplets = await self.nodes[0].overlay.search_edges(b"abcdefg")
         assert len(triplets) == 0
 
+        triplet = Triplet(b"abcdefg", b"b", b"c")
         await self.nodes[0].overlay.on_new_triplets_generated(Content(b"abcdefg", b""), [triplet])
         await self.deliver_messages()
         assert self.nodes[1].overlay.knowledge_graph.get_num_edges() == 1
