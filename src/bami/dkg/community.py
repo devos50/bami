@@ -2,7 +2,7 @@ import json
 import random
 from asyncio import ensure_future
 from binascii import unhexlify, hexlify
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Set
 
 from bami.dkg.cache import StorageRequestCache, TripletsRequestCache, EdgeSearchCache
 from bami.dkg.content import Content
@@ -41,6 +41,9 @@ class DKGCommunity(Community):
 
         # Keep track of the latency of individual edge searches.
         self.edge_search_latencies: List[Tuple[float, float]] = []
+
+        # Keep track of the individual IDs of the SG searches for an edge search
+        self.sg_identifiers_for_edge_searches: Dict[int, Set[int]] = {}
 
         self.eva = EVAProtocol(self, self.on_eva_receive, self.on_eva_send_complete, self.on_eva_error)
         self.eva.settings.max_simultaneous_transfers = 10000
@@ -107,6 +110,7 @@ class DKGCommunity(Community):
 
         cache = EdgeSearchCache(self, content_hash)
         self.request_cache.add(cache)
+        self.sg_identifiers_for_edge_searches[cache.number] = set()
 
         for sg_ind, skip_graph in enumerate(self.skip_graphs):
             for key in content_keys:

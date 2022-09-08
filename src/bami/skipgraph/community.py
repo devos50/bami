@@ -59,6 +59,7 @@ class SkipGraphCommunity(Community):
         self.add_message_handler(SetNeighbourNilPayload, self.on_set_neighbour_nil)
 
         self.search_hops: Dict[int, int] = {}  # Keep track of the number of hops per search
+        self.search_messages: Dict[int, Dict[int, int]] = {}  # Keep track of the number of messages received for individual searches
         self.search_latencies: List[float] = []  # Keep track of the latency of individual searches
         self.join_latencies: List[float] = []    # Keep track of the latency of join operations
         self.leave_latencies: List[float] = []   # Keep track of the latency of leave operations
@@ -115,6 +116,15 @@ class SkipGraphCommunity(Community):
         response_payload = SearchIntermediateResponsePayload(forward_id, to_node.to_payload())
         self.ez_send(from_peer, response_payload)
 
+    def register_search_message(self, msg_id: int, search_id: int) -> None:
+        if search_id not in self.search_messages:
+            self.search_messages[search_id] = {}
+
+        if msg_id not in self.search_messages[search_id]:
+            self.search_messages[search_id][msg_id] = 0
+
+        self.search_messages[search_id][msg_id] += 1
+
     @lazy_wrapper(SearchPayload)
     def on_search_request(self, peer: Peer, payload: SearchPayload):
         """
@@ -123,6 +133,8 @@ class SkipGraphCommunity(Community):
         """
         if self.is_offline:
             return
+
+        self.register_search_message(SearchPayload.msg_id, payload.identifier)
 
         self.logger.info("Peer %s (key %d) received search request from peer %s for key %d (start at level %d, "
                          "ID: %d, FW ID: %d)",
@@ -200,6 +212,8 @@ class SkipGraphCommunity(Community):
         if self.is_offline:
             return
 
+        self.register_search_message(SearchResponsePayload.msg_id, payload.identifier)
+
         self.logger.info("Peer %s received search response from peer %s (resulting key: %d, hops: %d)",
                          self.get_my_short_id(), self.get_short_id(peer.public_key.key_to_bin()),
                          payload.response.key, payload.hops)
@@ -230,7 +244,9 @@ class SkipGraphCommunity(Community):
             self.logger.warning("forward-search cache with id %s not found", payload.identifier)
             return
 
-        self.request_cache.pop("forward-search", payload.identifier)
+        forward_cache: SearchForwardRequestCache = self.request_cache.pop("forward-search", payload.identifier)
+        if forward_cache.payload:
+            self.register_search_message(SearchIntermediateResponsePayload.msg_id, forward_cache.payload.identifier)
 
     def on_search_forward_timeout(self, cache: SearchForwardRequestCache):
         """
@@ -294,11 +310,12 @@ class SkipGraphCommunity(Community):
         cache = self.request_cache.pop("neighbour", payload.identifier)
         cache.future.set_result((payload.found, SGNode.from_payload(payload.neighbour)))
 
-    async def search(self, key: int, introducer_node: Optional[SGNode] = None) -> SGNode:
+    async def search(self, key: int, introducer_node: Optional[SGNode] = None, cache: Optional[SearchRequestCache] = None) -> SGNode:
         self.logger.info("Peer %s (key %d) initiating search for key %d",
                          self.get_my_short_id(), self.routing_table.key, key)
 
-        cache = SearchRequestCache(self)
+        if not cache:
+            cache = SearchRequestCache(self)
         self.request_cache.add(cache)
 
         if introducer_node:

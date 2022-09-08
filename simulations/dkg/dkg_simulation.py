@@ -3,7 +3,7 @@ import os
 import random
 from asyncio import sleep
 from binascii import unhexlify, hexlify
-from typing import List
+from typing import List, Dict
 
 from bami.dkg.content import Content
 from bami.dkg.db.triplet import Triplet
@@ -128,6 +128,9 @@ class DKGSimulation(SkipgraphSimulation):
     async def on_ipv8_ready(self) -> None:
         await super().on_ipv8_ready()
 
+        # Reset the search statistics since joining the SG will also conduct searches.
+        self.reset_search_statistics()
+
         # Set the replication factor
         for node in self.nodes:
             node.overlay.replication_factor = self.settings.replication_factor
@@ -193,6 +196,19 @@ class DKGSimulation(SkipgraphSimulation):
 
         print("Total searches: %d, failed searches: %d" % (self.searches_done, self.failed_searches))
 
+    def reset_search_statistics(self):
+        """
+        Reset all search statistics.
+        """
+        print("Resetting search statistics")
+        for node in self.nodes:
+            for skip_graph in self.get_skip_graphs(node):
+                skip_graph.search_hops = {}
+                skip_graph.search_latencies = []
+                skip_graph.search_messages = {}
+                node.endpoint.enable_community_statistics(skip_graph.get_prefix(), False)
+                node.endpoint.enable_community_statistics(skip_graph.get_prefix(), True)
+
     def on_simulation_finished(self):
         super().on_simulation_finished()
 
@@ -245,6 +261,47 @@ class DKGSimulation(SkipgraphSimulation):
                 tot_sg_search_latency / num_edge_searches,
                 tot_triplets_requests_latency / num_edge_searches,
                 tot_search_latency / num_edge_searches))
+
+        # Determine individual search message statistics
+        aggregated_search_message_statistics: Dict[int, Dict[int, int]] = {}
+        for node in self.nodes:
+            for skip_graph in node.overlay.skip_graphs:
+                for search_id, msg_stats in skip_graph.search_messages.items():
+                    if search_id not in aggregated_search_message_statistics:
+                        aggregated_search_message_statistics[search_id] = {}
+
+                    for msg_type, msg_freq in msg_stats.items():
+                        if msg_type not in aggregated_search_message_statistics[search_id]:
+                            aggregated_search_message_statistics[search_id][msg_type] = 0
+                        aggregated_search_message_statistics[search_id][msg_type] += msg_freq
+
+        # Now we combine these statistics to get the message statistics per edge search
+        aggregated_edge_search_message_statistics: Dict[int, Dict[int, int]] = {}
+        for node in self.nodes:
+            for edge_search_id, sg_ids in node.overlay.sg_identifiers_for_edge_searches.items():
+                aggregated_edge_search_message_statistics[edge_search_id] = {}
+                for sg_id in sg_ids:
+                    sg_msg_stats = aggregated_search_message_statistics[sg_id]
+                    for msg_type, msg_freq in sg_msg_stats.items():
+                        if msg_type not in aggregated_edge_search_message_statistics[edge_search_id]:
+                            aggregated_edge_search_message_statistics[edge_search_id][msg_type] = 0
+                        aggregated_edge_search_message_statistics[edge_search_id][msg_type] += msg_freq
+
+        edge_search_bw_stats = {}
+        msg_sizes = {2: 306, 3: 294, 4: 290}
+        for edge_search_id, edge_search_stats in aggregated_edge_search_message_statistics.items():
+            tot_bw = 0
+            tot_msgs = 0
+            for msg_type, msg_freq in edge_search_stats.items():
+                tot_bw += msg_sizes[msg_type] * msg_freq
+                tot_msgs += msg_freq
+
+            edge_search_bw_stats[edge_search_id] = (tot_msgs, tot_bw)
+
+        with open(os.path.join(self.data_dir, "edge_search_bw_stats.csv"), "w") as edge_search_bw_stats_file:
+            edge_search_bw_stats_file.write("messages,bandwidth\n")
+            for tot_msgs, tot_bw in edge_search_bw_stats.values():
+                edge_search_bw_stats_file.write("%d,%d\n" % (tot_msgs, tot_bw))
 
         # Write aggregated statistics away
         aggregated_file_path = os.path.join("data", "edge_searches_exp_%s.csv" % self.settings.name)

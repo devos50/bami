@@ -8,9 +8,9 @@ from simulations.dkg.settings import DKGSimulationSettings, Dataset
 PEERS = [100]
 OFFLINE_FRACTIONS = [0]
 MALICIOUS_FRACTIONS = [0]
-SKIP_GRAPHS = [1]
-REPLICATION_FACTORS = [1]
-NB_SIZES = [1]
+SKIP_GRAPHS = [2]
+REPLICATION_FACTORS = [2]
+NB_SIZES = [2]
 EXPERIMENT_REPLICATION = 1
 EXP_NAME = "search"
 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
                                 settings.nb_size = nb_size
                                 settings.fast_data_injection = True
                                 settings.dataset = Dataset.ETHEREUM
-                                settings.num_searches = 1000
+                                settings.num_searches = 100
                                 settings.max_eth_blocks = 1
                                 settings.skip_graphs = skip_graphs
                                 settings.data_file_name = "blocks.json"

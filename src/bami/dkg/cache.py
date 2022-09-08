@@ -1,6 +1,7 @@
 from asyncio import Future, ensure_future, get_event_loop
 from typing import Dict, Tuple, Set
 
+from bami.skipgraph.cache import SearchRequestCache
 from bami.skipgraph.node import SGNode
 from ipv8.requestcache import RandomNumberCache
 from ipv8.util import succeed
@@ -102,10 +103,12 @@ class EdgeSearchCache(RandomNumberCache):
         self.check_search_finished()
 
     def perform_search(self, sg_ind: int, key: int):
-        search_future = ensure_future(self.community.skip_graphs[sg_ind].search(key))
+        cache: SearchRequestCache = SearchRequestCache(self.community.skip_graphs[sg_ind])
+        search_future = ensure_future(self.community.skip_graphs[sg_ind].search(key, cache=cache))
         search_future.add_done_callback(lambda r: self.on_skip_graph_result(sg_ind, key, r))
         self.sg_searches[(sg_ind, key)] = search_future
         self.sg_searches_start_times[(sg_ind, key)] = get_event_loop().time()
+        self.community.sg_identifiers_for_edge_searches[self.number].add(cache.number)
 
     @property
     def timeout_delay(self):
