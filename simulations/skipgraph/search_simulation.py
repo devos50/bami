@@ -21,20 +21,15 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
                 node.endpoint.enable_community_statistics(skip_graph.get_prefix(), False)
                 node.endpoint.enable_community_statistics(skip_graph.get_prefix(), True)
 
-        # for node in random.sample(self.nodes[1:], 40):
-        #     node.overlay.is_offline = True
-        #     print("Offline node: %s" % node.overlay.get_my_node())
-        #     self.online_nodes.remove(node)
-        #     self.offline_nodes.append(node)
-        #     self.node_keys_sorted.remove(node.overlay.routing_table.key)
-
-        # honest_nodes = [n for n in self.nodes]
-        # for node in random.sample(self.nodes[1:], 50):
-        #     node.overlay.do_censor = True
-        #     honest_nodes.remove(node)
-
-        # for node in self.online_nodes:
-        #     print(node.overlay.routing_table)
+        malicious_nodes = set()
+        if self.settings.malicious_fraction > 0:
+            num_malicious: int = int(len(self.nodes) * (self.settings.malicious_fraction / 100))
+            print("Making %d nodes malicious..." % num_malicious)
+            for node in random.sample(self.nodes, num_malicious):
+                for skip_graph in self.get_skip_graphs(node):
+                    skip_graph.is_malicious = True
+                malicious_nodes.add(node)
+                self.online_nodes.remove(node)
 
         # Schedule some searches
         successful_searches = 0
@@ -63,18 +58,21 @@ class SearchSkipgraphSimulation(SkipgraphSimulation):
 
 if __name__ == "__main__":
     settings = SkipGraphSimulationSettings()
-    settings.peers = 1000
+    settings.name = "search"
+    settings.peers = 1600
     settings.duration = 3600
     settings.logging_level = "ERROR"
     settings.profile = False
-    settings.nb_size = 3
+    settings.nb_size = 2
     settings.skip_graphs = 1
+    settings.malicious_fraction = 0
     settings.enable_community_statistics = True
     settings.num_searches = 1000
     settings.enable_ipv8_ticker = False
     settings.latencies_file = "data/latencies.txt"
     settings.track_failing_nodes_in_rts = False
     settings.assign_sequential_sg_keys = True
+    settings.identifier = "%d" % settings.nb_size
     simulation = SearchSkipgraphSimulation(settings)
 
     ensure_future(simulation.run())
