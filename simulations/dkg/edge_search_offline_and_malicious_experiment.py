@@ -11,7 +11,7 @@ MALICIOUS_FRACTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 SKIP_GRAPHS = [5]
 REPLICATION_FACTORS = [5]
 NB_SIZES = [5]
-EXPERIMENT_REPLICATION = 1
+EXPERIMENT_REPLICATION = 10
 EXP_NAME = "offline_and_malicious"
 
 
@@ -28,10 +28,10 @@ if __name__ == "__main__":
     for num_peers in PEERS:
         for skip_graphs in SKIP_GRAPHS:
             for offline_fraction in OFFLINE_FRACTIONS:
-                processes = []
                 for malicious_fraction in MALICIOUS_FRACTIONS:
                     for replication_factor in REPLICATION_FACTORS:
                         for nb_size in NB_SIZES:
+                            processes = []
                             for exp_num in range(EXPERIMENT_REPLICATION):
                                 print("Running experiment with %d peers (num: %d)..." % (num_peers, exp_num))
                                 settings = DKGSimulationSettings()
@@ -58,5 +58,5 @@ if __name__ == "__main__":
                                 p.start()
                                 processes.append(p)
 
-                for p in processes:
-                    p.join()
+                            for p in processes:
+                                p.join()
