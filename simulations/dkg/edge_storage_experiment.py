@@ -36,7 +36,7 @@ if __name__ == "__main__":
                 settings.fast_data_injection = True
                 settings.dataset = Dataset.ETHEREUM
                 settings.num_searches = 0
-                settings.max_eth_blocks = 1
+                settings.max_eth_blocks = None
                 settings.skip_graphs = 1
                 settings.fix_sg_key_distribution = fix_sg_key_distribution
                 settings.data_file_name = "blocks.json"
