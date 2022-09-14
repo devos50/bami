@@ -12,3 +12,4 @@ class SkipGraphSimulationSettings(SimulationSettings):
     malicious_fraction: int = 0
     track_failing_nodes_in_rts: bool = False
     assign_sequential_sg_keys: bool = False
+    fix_sg_key_distribution: bool = False

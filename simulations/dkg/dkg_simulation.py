@@ -221,14 +221,15 @@ class DKGSimulation(SkipgraphSimulation):
 
         # Write away the knowledge graph statistics per node
         with open(os.path.join(self.data_dir, "kg_stats.csv"), "w") as out_file:
-            out_file.write("peers,nb_size,offline_fraction,malicious_fraction,skip_graphs,replication_factor,peer,key,num_edges,storage_costs\n")
+            out_file.write("peers,nb_size,offline_fraction,malicious_fraction,skip_graphs,replication_factor,peer,key,key_distribution,num_edges,storage_costs\n")
             for ind, node in enumerate(self.nodes):
                 num_edges = node.overlay.knowledge_graph.get_num_edges()
                 storage_costs = node.overlay.knowledge_graph.get_storage_costs()
-                out_file.write("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n" %
+                out_file.write("%d,%d,%d,%d,%d,%d,%d,%d,%s,%d,%d\n" %
                                (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
                                 self.settings.malicious_fraction, self.settings.skip_graphs,
                                 self.settings.replication_factor, ind, node.overlay.get_sg_key(),
+                                "fixed" if self.settings.fix_sg_key_distribution else "random",
                                 num_edges, storage_costs))
 
         # Write away the edge search latencies
@@ -257,10 +258,11 @@ class DKGSimulation(SkipgraphSimulation):
                                           self.settings.malicious_fraction, self.settings.skip_graphs,
                                           self.settings.replication_factor, tot_search_latency))
 
-        print("Average SG search latency: %f, triplets request latency: %f, E2E latency: %f" % (
-                tot_sg_search_latency / num_edge_searches,
-                tot_triplets_requests_latency / num_edge_searches,
-                tot_search_latency / num_edge_searches))
+        if num_edge_searches > 0:
+            print("Average SG search latency: %f, triplets request latency: %f, E2E latency: %f" % (
+                    tot_sg_search_latency / num_edge_searches,
+                    tot_triplets_requests_latency / num_edge_searches,
+                    tot_search_latency / num_edge_searches))
 
         # Determine individual search message statistics
         aggregated_search_message_statistics: Dict[int, Dict[int, int]] = {}

@@ -145,12 +145,13 @@ class SkipgraphSimulation(BamiSimulation):
         for sg_ind in range(self.settings.skip_graphs):
             int_pk = ind + 1
             if not self.settings.assign_sequential_sg_keys:
-                # Create a hash from the PK
-                h = hashlib.md5()
-                h.update(node.overlay.my_peer.public_key.key_to_bin())
-                # int_pk = (2 ** 32) // len(self.nodes) * ind
-                # int_pk = random.randint(0, (2 ** 32))
-                int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
+                if self.settings.fix_sg_key_distribution:
+                    int_pk = (2 ** 32) // len(self.nodes) * ind
+                else:
+                    # Create a hash from the PK
+                    h = hashlib.md5()
+                    h.update(node.overlay.my_peer.public_key.key_to_bin())
+                    int_pk = int.from_bytes(h.digest(), 'big') % (2 ** 32)
 
             if sg_ind == 0:
                 self.node_keys_sorted.append(int_pk)
@@ -240,7 +241,7 @@ class SkipgraphSimulation(BamiSimulation):
                         for msg_id, network_stats in node.endpoint.statistics[skip_graph.get_prefix()].items():
                             tot_up += network_stats.bytes_up
                             tot_down += network_stats.bytes_down
-                    msg_stats_file.write("%d,%d,%d,%d\n" % (self.settings.peers, ind, network_stats.bytes_up, network_stats.bytes_down))
+                    msg_stats_file.write("%d,%d,%d,%d\n" % (self.settings.peers, ind, tot_up, tot_down))
 
         # Search hops statistics
         hops_freq = {}
@@ -260,7 +261,8 @@ class SkipgraphSimulation(BamiSimulation):
                 tot_count += freq
                 search_hops_file.write("%d,%d,%d,%d\n" % (self.settings.peers, self.settings.nb_size, num_hops, freq))
 
-        print("Average search hops: %f" % (tot / tot_count))
+        if tot_count > 0:
+            print("Average search hops: %f" % (tot / tot_count))
 
         # Skip graph search latencies
         with open(os.path.join(self.data_dir, "latencies.csv"), "w") as latencies_file:
