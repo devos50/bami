@@ -43,6 +43,20 @@ class DKGSimulation(SkipgraphSimulation):
             for triplet in triplets:
                 responsible_node.overlay.knowledge_graph.add_triplet(triplet)
 
+    def get_message_statistics(self, node):
+        msg_stats_for_node = super().get_message_statistics(node)
+
+        # Include the DKG overlay message statistics
+        for msg_id, network_stats in node.endpoint.statistics[node.overlay.get_prefix()].items():
+            if msg_id not in msg_stats_for_node:
+                msg_stats_for_node[msg_id] = [0, 0, 0, 0]
+            msg_stats_for_node[msg_id][0] += network_stats.num_up
+            msg_stats_for_node[msg_id][1] += network_stats.num_down
+            msg_stats_for_node[msg_id][2] += network_stats.bytes_up
+            msg_stats_for_node[msg_id][3] += network_stats.bytes_down
+
+        return msg_stats_for_node
+
     async def setup_tribler_experiment(self):
         # Give each node the PTN rule
         ptn_rule = PTNRule()

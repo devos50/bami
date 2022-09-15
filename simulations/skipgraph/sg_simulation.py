@@ -210,6 +210,22 @@ class SkipgraphSimulation(BamiSimulation):
         print("Extending Skip Graph neighbourhood size to %d" % self.settings.nb_size)
         self.extend_skip_graph_neighbourhood(self.settings.nb_size)
 
+    def get_message_statistics(self, node):
+        """
+        Compute statistics on messages sent for a particular IPv8 node.
+        """
+        msg_stats_for_node: Dict[int, List] = {}
+        for skip_graph in self.get_skip_graphs(node):
+            for msg_id, network_stats in node.endpoint.statistics[skip_graph.get_prefix()].items():
+                if msg_id not in msg_stats_for_node:
+                    msg_stats_for_node[msg_id] = [0, 0, 0, 0]
+                msg_stats_for_node[msg_id][0] += network_stats.num_up
+                msg_stats_for_node[msg_id][1] += network_stats.num_down
+                msg_stats_for_node[msg_id][2] += network_stats.bytes_up
+                msg_stats_for_node[msg_id][3] += network_stats.bytes_down
+
+        return msg_stats_for_node
+
     def on_simulation_finished(self):
         """
         The experiment is finished. Write the results away.
@@ -222,15 +238,21 @@ class SkipgraphSimulation(BamiSimulation):
 
         # Message statistics
         if self.settings.enable_community_statistics:
-            with open(os.path.join(self.data_dir, "msg_statistics.csv"), "w") as msg_stats_file:
-                msg_stats_file.write("peer,msg_id,num_up,num_down,bytes_up,bytes_down\n")
-                for ind, node in enumerate(self.nodes):
-                    for skip_graph in self.get_skip_graphs(node):
-                        for msg_id, network_stats in node.endpoint.statistics[skip_graph.get_prefix()].items():
-                            msg_stats_file.write("%d,%d,%d,%d,%d,%d\n" % (ind, msg_id, network_stats.num_up,
-                                                                          network_stats.num_down,
-                                                                          network_stats.bytes_up,
-                                                                          network_stats.bytes_down))
+            with open(os.path.join(self.data_dir, "tot_bw_statistics.csv"), "w") as tot_bw_stats_file:
+                tot_bw_stats_file.write("peer,bytes_up,bytes_down\n")
+                with open(os.path.join(self.data_dir, "msg_statistics.csv"), "w") as msg_stats_file:
+                    msg_stats_file.write("peer,msg_id,num_up,num_down,bytes_up,bytes_down\n")
+                    for ind, node in enumerate(self.nodes):
+                        msg_stats_for_node = self.get_message_statistics(node)
+                        tot_up = 0
+                        tot_down = 0
+                        for msg_id, msg_info in msg_stats_for_node.items():
+                            tot_up += msg_info[2]
+                            tot_down += msg_info[3]
+                            msg_stats_file.write("%d,%d,%d,%d,%d,%d\n" % (ind, msg_id, msg_info[0], msg_info[1],
+                                                                          msg_info[2], msg_info[3]))
+
+                        tot_bw_stats_file.write("%d,%d,%d\n" % (ind, tot_up, tot_down))
 
             # Aggregated bw statistics
             with open(os.path.join(self.data_dir, "aggregate_msg_statistics.csv"), "w") as msg_stats_file:
