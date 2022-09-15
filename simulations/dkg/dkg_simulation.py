@@ -244,7 +244,7 @@ class DKGSimulation(SkipgraphSimulation):
                     num_edge_searches += 1
                     tot_sg_search_latency += latency[0]
                     tot_triplets_requests_latency += latency[1]
-                    tot_search_latency += latency[0] + latency[1]
+                    tot_search_latency = latency[0] + latency[1]
                     latencies_file.write("%d,%d,%d,%d,%d,%d,sg,%f\n" %
                                          (self.settings.peers, self.settings.nb_size, self.settings.offline_fraction,
                                           self.settings.malicious_fraction, self.settings.skip_graphs,
