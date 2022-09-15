@@ -5,7 +5,7 @@ from simulations.dkg import create_aggregate_result_files
 from simulations.dkg.dkg_simulation import DKGSimulation
 from simulations.dkg.settings import DKGSimulationSettings, Dataset
 
-PEERS = [800, 3200, 12800]
+PEERS = [800, 1600, 3200, 6400, 12800]
 EXPERIMENT_REPLICATION = 1
 EXP_NAME = "network_usage"
 
