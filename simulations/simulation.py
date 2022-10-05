@@ -114,7 +114,7 @@ class BamiSimulation(TaskManager):
 
                 node_a.overlay.walk_to(node_b.endpoint.wan_address)
 
-        await sleep(5)  # Make sure peers have discovered each other
+        await sleep(5)  # Make sure peers have time to discover each other
 
         print("IPv8 peer discovery complete")
 
